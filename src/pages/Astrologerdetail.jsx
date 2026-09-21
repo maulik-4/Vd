@@ -130,6 +130,13 @@ const REVIEWS_FALLBACK = [
 
 const DEFAULT_SKILLS = ['Vedic Astrology', 'Numerology', 'Palm Reading', 'Kundli Matching', 'Career Guidance', 'Love Problem', 'Business Growth', 'Vastu Consultation', 'Gemstone Suggestion', 'Prashna Kundli'];
 
+const getFollowKey = (astroId) => (astroId ? `followed_astro_${String(astroId)}` : null);
+const isAstroFollowed = (astroId) => {
+  const key = getFollowKey(astroId);
+  if (!key) return false;
+  try { return localStorage.getItem(key) === 'true'; } catch (_) { return false; }
+};
+
 /* ══════════ MAIN ══════════ */
 const AstrologerDetail = () => {
   const { id } = useParams();
@@ -363,7 +370,29 @@ const fixImgHost = (url) =>
   };
 
   const [notified, setNotified] = useState(false);
+  const [followed, setFollowed] = useState(() => isAstroFollowed(id || astro?.id || astro?._id));
   const [toastMsg, setToastMsg] = useState(null);
+
+  useEffect(() => {
+    setFollowed(isAstroFollowed(id || astro?.id || astro?._id));
+  }, [id, astro?.id, astro?._id]);
+
+  const handleFollowToggle = () => {
+    const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (!token) {
+      setShowLoginModal(true);
+      return;
+    }
+    const astroId = String(astro?.id || astro?._id || id || '');
+    const next = !followed;
+    setFollowed(next);
+    const key = getFollowKey(astroId);
+    if (key) {
+      try { localStorage.setItem(key, String(next)); } catch (_) {}
+    }
+    setToastMsg(next ? `You are now following ${astro?.name || 'this astrologer'}.` : `You unfollowed ${astro?.name || 'this astrologer'}.`);
+    setTimeout(() => setToastMsg(null), 2500);
+  };
 
   const handleNotifyToggle = async () => {
     const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
@@ -536,6 +565,10 @@ const fixImgHost = (url) =>
                     <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
                       <span className="ad-pc-name">{astro.name}</span>
                       <span className="ad-pc-badge"><i className="fas fa-check-circle" /> Verified Expert</span>
+                      <button className={`ad-follow-pill ${followed ? 'active' : ''}`} onClick={handleFollowToggle} type="button">
+                        <i className={followed ? 'fas fa-user-check' : 'fas fa-user-plus'} />
+                        <span>{followed ? 'Following' : 'Follow'}</span>
+                      </button>
                     </div>
                     {astroRole && <div className="ad-pc-role mb-2" style={{ fontSize: '15px', color: '#f59e0b', fontWeight: '600' }}>{astroRole}</div>}
                     <div className="ad-pc-stars-row">

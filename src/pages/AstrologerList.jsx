@@ -70,6 +70,21 @@ const DEFAULT_FILTERS = {
   language: '',
 };
 
+const getFollowKey = (astro) => {
+  const id = astro?.id || astro?._id || astro?.astro_id || astro?.name || '';
+  return id ? `followed_astro_${String(id)}` : null;
+};
+
+const isFollowed = (astro) => {
+  const key = getFollowKey(astro);
+  if (!key) return false;
+  try {
+    return localStorage.getItem(key) === 'true';
+  } catch (_) {
+    return false;
+  }
+};
+
 /* Custom Radio */
 const RadioOpt = ({ label, checked, onChange }) => (
   <div className="al-opt" onClick={onChange}>
@@ -107,10 +122,11 @@ const SkeletonCard = () => (
 );
 
 /* Astrologer Card */
-const AstrologerCard = ({ astro, onChat, onNotify }) => {
+const AstrologerCard = ({ astro, onChat, onNotify, onFollow }) => {
   const [liked,  setLiked]  = useState(false);
   const [imgErr, setImgErr] = useState(false);
   const [notified, setNotified] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(() => isFollowed(astro));
   const isBoosted = (value) => value === true || value === 1 || value === '1' || value === 'true';
   const boostChat = isBoosted(astro.is_boost_chat);
   const boostCall = isBoosted(astro.is_boost_call);
@@ -126,6 +142,10 @@ const AstrologerCard = ({ astro, onChat, onNotify }) => {
   const dotCls = isBusy ? 'db' : isOnline ? 'dn' : 'do';
   const waitLabel = getWaitLabel(astro);
 
+  useEffect(() => {
+    setIsFollowing(isFollowed(astro));
+  }, [astro]);
+
   const handleNotifyClick = (e) => {
     e.stopPropagation();
     const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
@@ -140,15 +160,34 @@ const AstrologerCard = ({ astro, onChat, onNotify }) => {
     }
   };
 
+  const handleFollowClick = (e) => {
+    e.stopPropagation();
+    const nextState = !isFollowing;
+    setIsFollowing(nextState);
+    const key = getFollowKey(astro);
+    if (key) {
+      try { localStorage.setItem(key, String(nextState)); } catch (_) {}
+    }
+    if (onFollow) onFollow(astro, nextState);
+  };
+
   return (
     <motion.div className="al-card"
       initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} transition={{duration:.28}}
       style={{cursor:'pointer'}}
       onClick={()=>onChat(astro, 'view')}>
       <span className="al-exp">{astro.experience||'5'}+ Yrs Exp</span>
-      <button className={`al-heart${liked?' on':''}`} onClick={(e)=>{e.stopPropagation();setLiked(!liked)}}>
-        <i className={liked?'fas fa-heart':'far fa-heart'} />
-      </button>
+      <div className="al-top-actions">
+        <button className={`al-heart${liked?' on':''}`} onClick={(e)=>{e.stopPropagation();setLiked(!liked)}}>
+          <i className={liked?'fas fa-heart':'far fa-heart'} />
+        </button>
+        <div className="al-follow-row">
+          <button className={`al-follow-btn${isFollowing ? ' on' : ''}`} onClick={handleFollowClick}>
+            <i className={isFollowing ? 'fas fa-user-check' : 'fas fa-user-plus'} />
+            <span>{isFollowing ? 'Following' : 'Follow'}</span>
+          </button>
+        </div>
+      </div>
 
       <div className="al-av-wrap">
         <div className="al-av-clip">
@@ -930,7 +969,15 @@ const AstrologerList = () => {
                       : <>
                           {filteredAstrologers.map((a,i)=>(
                             <div key={a.id||i} className="col-6 col-md-4">
-                              <AstrologerCard astro={a} onNotify={handleNotify} onChat={(astro, type) => {
+                              <AstrologerCard astro={a} onNotify={handleNotify} onFollow={(astro, next) => {
+                                const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
+                                if (!token) {
+                                  setShowLoginModal(true);
+                                  return;
+                                }
+                                setToastMsg(next ? `You are now following ${astro.name}.` : `You unfollowed ${astro.name}.`);
+                                setTimeout(() => setToastMsg(null), 2500);
+                              }} onChat={(astro, type) => {
                                 const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
                                 if (!token && (type === 'chat' || type === 'call' || type === 'video')) {
                                   setShowLoginModal(true);
