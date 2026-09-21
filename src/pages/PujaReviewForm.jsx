@@ -501,7 +501,7 @@ const PujaFillForm = () => {
 					let isPaymentDone = false;
 					const redirectTarget = window.location.origin + "/my_puja_booking";
 					const options = {
-						key: "rzp_test_TJfZRU2xcY3vGX",
+						key: "rzp_live_TdTaMRFmlmWrMf",
 						amount: response.amount,
 						currency: "INR",
 						name: "Vaidik Guru",

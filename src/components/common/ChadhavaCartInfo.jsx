@@ -350,7 +350,7 @@ const ChadhavaCartPage = () => {
 					let isPaymentDone = false;
 					const redirectTarget = window.location.origin + '/my_chadhava_booking';
 					const options = {
-						key: "rzp_test_TJfZRU2xcY3vGX",
+						key: "rzp_live_TdTaMRFmlmWrMfrzp_live_TdTaMRFmlmWrMf",
 						amount: res.amount,
 						currency: "INR",
 						name: "vaidikguru",
