@@ -290,17 +290,7 @@ const AstrologerRegistration = () => {
         if (formData.bio && !formData.about) {
             data.append('about', formData.bio);
         }
-        if (formData.profile_img) {
-            data.append('image', formData.profile_img);
-            data.append('astro_img', formData.profile_img);
-        }
-        if (formData.aadhar_card_img) {
-            data.append('aadhar_img', formData.aadhar_card_img);
-        }
-        if (formData.pan_card_img) {
-            data.append('pan_img', formData.pan_card_img);
-        }
-
+        
         try {
             const res = await apiService.postMultipart('/astrologer_api/astrologer_register', data);
             if (res.status) {

@@ -162,13 +162,18 @@ const AstrologerCard = ({ astro, onChat, onNotify, onFollow }) => {
 
   const handleFollowClick = (e) => {
     e.stopPropagation();
+    const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (!token) {
+      if (onFollow) onFollow(astro, null, true);
+      return;
+    }
     const nextState = !isFollowing;
     setIsFollowing(nextState);
     const key = getFollowKey(astro);
     if (key) {
       try { localStorage.setItem(key, String(nextState)); } catch (_) {}
     }
-    if (onFollow) onFollow(astro, nextState);
+    if (onFollow) onFollow(astro, nextState, false);
   };
 
   return (
@@ -178,15 +183,25 @@ const AstrologerCard = ({ astro, onChat, onNotify, onFollow }) => {
       onClick={()=>onChat(astro, 'view')}>
       <span className="al-exp">{astro.experience||'5'}+ Yrs Exp</span>
       <div className="al-top-actions">
-        <button className={`al-heart${liked?' on':''}`} onClick={(e)=>{e.stopPropagation();setLiked(!liked)}}>
-          <i className={liked?'fas fa-heart':'far fa-heart'} />
-        </button>
         <div className="al-follow-row">
-          <button className={`al-follow-btn${isFollowing ? ' on' : ''}`} onClick={handleFollowClick}>
+          <button
+            className={`al-follow-btn${isFollowing ? ' on' : ''}`}
+            onClick={handleFollowClick}
+            type="button"
+            aria-label={isFollowing ? `Unfollow ${astro.name}` : `Follow ${astro.name}`}
+          >
             <i className={isFollowing ? 'fas fa-user-check' : 'fas fa-user-plus'} />
             <span>{isFollowing ? 'Following' : 'Follow'}</span>
           </button>
         </div>
+        <button
+          className={`al-heart${liked?' on':''}`}
+          onClick={(e)=>{e.stopPropagation();setLiked(!liked)}}
+          type="button"
+          aria-label="Add to favorites"
+        >
+          <i className={liked?'fas fa-heart':'far fa-heart'} />
+        </button>
       </div>
 
       <div className="al-av-wrap">
@@ -969,9 +984,8 @@ const AstrologerList = () => {
                       : <>
                           {filteredAstrologers.map((a,i)=>(
                             <div key={a.id||i} className="col-6 col-md-4">
-                              <AstrologerCard astro={a} onNotify={handleNotify} onFollow={(astro, next) => {
-                                const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
-                                if (!token) {
+                              <AstrologerCard astro={a} onNotify={handleNotify} onFollow={(astro, next, needLogin) => {
+                                if (needLogin) {
                                   setShowLoginModal(true);
                                   return;
                                 }

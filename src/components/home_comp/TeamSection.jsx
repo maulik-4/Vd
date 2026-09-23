@@ -4,10 +4,12 @@ import apiService from '../../services/apiServices';
 import storageService from '../../services/storageServices';
 import LoginOTPModal from '../accounts/LoginOTPModel';
 import { getAstroPrice, getAstroRating, getAstroReviewCount, getAstroChatPrice, getAstroCallPrice, getAstroRole, getAstroStatus, getWaitLabel } from '../../services/astroHelpers';
+import '../../pages/AstrologerList.css';
 
 const TeamSection = ({ astrologer }) => {
 	const [list, setList] = useState(() => (Array.isArray(astrologer) && astrologer.length ? astrologer : []));
 	const [showLoginModal, setShowLoginModal] = useState(false);
+	const [toastMsg, setToastMsg] = useState(null);
 
 	useEffect(() => {
 		let active = true;
@@ -61,7 +63,19 @@ const TeamSection = ({ astrologer }) => {
 
 				<div className="dq-astro-grid">
 					{items.map((item) => (
-						<AstrologerCard astro={item} onChat={handleAction} key={item.id || item._id} />
+						<AstrologerCard
+							astro={item}
+							onChat={handleAction}
+							onFollow={(astro, next, needLogin) => {
+								if (needLogin) {
+									setShowLoginModal(true);
+									return;
+								}
+								setToastMsg(next ? `You are now following ${astro.name}.` : `You unfollowed ${astro.name}.`);
+								setTimeout(() => setToastMsg(null), 2500);
+							}}
+							key={item.id || item._id}
+						/>
 					))}
 				</div>
 			</div>
@@ -74,6 +88,13 @@ const TeamSection = ({ astrologer }) => {
 					window.location.reload();
 				}}
 			/>
+
+			{toastMsg && (
+				<div className="al-toast">
+					<i className="fas fa-bell" style={{ color: '#f59e0b' }} />
+					<span>{toastMsg}</span>
+				</div>
+			)}
 		</section>
 	);
 };
@@ -101,15 +122,51 @@ const initials = (name = '') =>
 		.map((w) => w[0]?.toUpperCase())
 		.join('');
 
-const AstrologerCard = ({ astro, onChat }) => {
+const getFollowKey = (astro) => {
+	const id = astro?.id || astro?._id || astro?.astro_id || astro?.name || '';
+	return id ? `followed_astro_${String(id)}` : null;
+};
+
+const isFollowed = (astro) => {
+	const key = getFollowKey(astro);
+	if (!key) return false;
+	try {
+		return localStorage.getItem(key) === 'true';
+	} catch (_) {
+		return false;
+	}
+};
+
+const AstrologerCard = ({ astro, onChat, onFollow }) => {
 	const [liked, setLiked] = useState(false);
 	const [imgErr, setImgErr] = useState(false);
 	const [notified, setNotified] = useState(false);
+	const [isFollowing, setIsFollowing] = useState(() => isFollowed(astro));
 	const cats = (Array.isArray(astro.category) ? astro.category : []).slice(0, 3).map((c) => (typeof c === 'object' ? (c.name || c.category_name || c.title) : c)).filter(Boolean);
 	const role = getAstroRole(astro);
 	const { isBusy, isOnline } = getAstroStatus(astro);
 	const dotCls = isBusy ? 'db' : isOnline ? 'dn' : 'do';
 	const waitLabel = getWaitLabel(astro);
+
+	useEffect(() => {
+		setIsFollowing(isFollowed(astro));
+	}, [astro]);
+
+	const handleFollowClick = (e) => {
+		e.stopPropagation();
+		const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
+		if (!token) {
+			if (onFollow) onFollow(astro, null, true);
+			return;
+		}
+		const nextState = !isFollowing;
+		setIsFollowing(nextState);
+		const key = getFollowKey(astro);
+		if (key) {
+			try { localStorage.setItem(key, String(nextState)); } catch (_) {}
+		}
+		if (onFollow) onFollow(astro, nextState, false);
+	};
 
 	const handleNotifyClick = async (e) => {
 		e.stopPropagation();
@@ -139,15 +196,30 @@ const AstrologerCard = ({ astro, onChat }) => {
 			onClick={() => onChat(astro, 'view')}
 		>
 			<span className="al-exp">{astro.experience || '5'}+ Yrs Exp</span>
-			<button
-				className={`al-heart${liked ? ' on' : ''}`}
-				onClick={(e) => {
-					e.stopPropagation();
-					setLiked(!liked);
-				}}
-			>
-				<i className={liked ? 'fas fa-heart' : 'far fa-heart'} />
-			</button>
+			<div className="al-top-actions">
+				<div className="al-follow-row">
+					<button
+						className={`al-follow-btn${isFollowing ? ' on' : ''}`}
+						onClick={handleFollowClick}
+						type="button"
+						aria-label={isFollowing ? `Unfollow ${astro.name}` : `Follow ${astro.name}`}
+					>
+						<i className={isFollowing ? 'fas fa-user-check' : 'fas fa-user-plus'} />
+						<span>{isFollowing ? 'Following' : 'Follow'}</span>
+					</button>
+				</div>
+				<button
+					className={`al-heart${liked ? ' on' : ''}`}
+					onClick={(e) => {
+						e.stopPropagation();
+						setLiked(!liked);
+					}}
+					type="button"
+					aria-label="Add to favorites"
+				>
+					<i className={liked ? 'fas fa-heart' : 'far fa-heart'} />
+				</button>
+			</div>
 
 			<div className="al-av-wrap">
 				<div className="al-av-clip">

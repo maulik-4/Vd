@@ -23,7 +23,7 @@ const Header = ({ onMenuToggle, onSideMenuToggle, onSearchToggle }) => {
 
 	const handleWhatsappClick = () => {
 		window.open(
-			"https://wa.me/7311104569?text=Hello%20I%20am%20interested",
+			"https://wa.me/8881110520?text=Hello%20I%20am%20interested",
 			"_blank"
 		);
 	};

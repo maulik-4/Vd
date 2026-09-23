@@ -133,7 +133,7 @@ export default function DiviniQContactPage() {
                             <div>
                                 <p className="pp-sidebar__label">Sacred Office</p>
                                 <p className="pp-sidebar__value"> House No. 1/439, Vishal Khand, Gomtinagar, Lucknow, Lucknow, Uttar Pradesh, India, 226010
-                                    click Here For All The Companies At 226010 | Close
+                                   
                                     .</p>
                                 <p className="pp-sidebar__hint">Uttar Pradesh, India</p>
                             </div>

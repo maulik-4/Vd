@@ -20,7 +20,7 @@ const HERO_BANNER_IMAGE = "/assets/img/images/profile-hero-banner.jpeg";
 // There is no marital_status / profession / profile_for / country / gotra
 // on the server, so those fields were dropped from this page.
 const GET_PROFILE_URL = "/user_api/get_profile";
-const UPDATE_PROFILE_URL = "/user_api/profile_update_img";
+const UPDATE_PROFILE_URL = "/user_api/profile_update";
 
 // Read-only fields — not part of profile_update_img, just displayed.
 const PHONE_FIELD = { key: "number", label: "Phone Number", icon: "phone" };
@@ -324,9 +324,9 @@ export default function ProfilePage() {
       formData.append("rashi", values.rashi || "");
       formData.append("profile_img", file);
 
-      let response = await apiService.postMultipart(UPDATE_PROFILE_URL, formData);
+      let response = await apiService.postMultipart("/user_api/profile_update_img", formData);
       if (!response?.status) {
-        response = await apiService.postMultipart("/user_api/profile_update", formData);
+        response = await apiService.put("/user_api/profile_update", formData);
       }
 
       if (response?.status) {
@@ -550,7 +550,7 @@ export default function ProfilePage() {
         <div style={styles.heroContent}>
           <div style={styles.heroEyebrow}>Welcome Back</div>
           <div style={styles.heroTitle}>
-            My <span style={{ color: colors.gold  }}>Profile</span>
+            My <span style={{ color: colors.gold }}>Profile</span>
           </div>
           <div style={styles.heroDividerWrap}>
             <span style={styles.heroDivider} />
