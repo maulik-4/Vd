@@ -9,6 +9,7 @@ import ScrollTop from '../components/common/ScrollTop';
 import LoginModal from '../components/common/LoginModal';
 import AuthService from '../services/authServices';
 import apiService from '../services/apiServices';
+import { useSEO } from '../hooks/seoHook';
 import './BlogDetail.css';
 
 // Mapping table of backend category IDs to clean frontend names
@@ -145,6 +146,17 @@ const BlogDetail = () => {
   const [currentBlog, setCurrentBlog] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  // Dynamic SEO for individual blog
+  useSEO({
+    title: currentBlog?.title ? currentBlog.title : 'Vedic Wisdom & Insights | Blog',
+    description: currentBlog?.description
+      ? stripHtml(currentBlog.description).slice(0, 160)
+      : 'Explore sacred insights, Vedic astrology wisdom, and spiritual rituals on VaidikGuru.',
+    keywords: `${currentBlog?.title || 'blog'}, vedic astrology, spiritual guidance, VaidikGuru`,
+    canonical: `/blog/${id}`,
+    ogImage: currentBlog?.image ? fixImgHost(currentBlog.image) : undefined,
+  });
 
   // Thumbs feedback state (helpful)
   const [feedback, setFeedback] = useState(null); // 'yes' or 'no' or null

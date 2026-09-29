@@ -190,7 +190,7 @@ const AstrologerCard = ({ astro, onChat, onNotify, onFollow }) => {
             type="button"
             aria-label={isFollowing ? `Unfollow ${astro.name}` : `Follow ${astro.name}`}
           >
-            <i className={isFollowing ? 'fas fa-user-check' : 'fas fa-user-plus'} />
+            <i className={isFollowing ? 'fas fa-check' : 'fas fa-user-plus'} />
             <span>{isFollowing ? 'Following' : 'Follow'}</span>
           </button>
         </div>
@@ -409,40 +409,26 @@ const RecommendationModal = ({ isOpen, onClose }) => {
           <form onSubmit={handleSubmit}>
             <input
               type="text"
-              className="al-rec-input"
+              className="rec-modal-input"
               placeholder="Your Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              style={{
-                width: "100%", padding: "11px 14px", marginBottom: 12,
-                border: "1.5px solid #d1d5db", borderRadius: 9, fontSize: 13.5, outline: "none",
-                color: "#111827", backgroundColor: "#ffffff",
-              }}
+              required
             />
             <input
               type="tel"
-              className="al-rec-input"
+              className="rec-modal-input"
               placeholder="Phone Number"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              style={{
-                width: "100%", padding: "11px 14px", marginBottom: 12,
-                border: "1.5px solid #d1d5db", borderRadius: 9, fontSize: 13.5, outline: "none",
-                color: "#111827", backgroundColor: "#ffffff",
-              }}
+              required
             />
             <textarea
-              className="al-rec-input"
+              className="rec-modal-input"
               placeholder="What are you looking for? (optional)"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={3}
-              style={{
-                width: "100%", padding: "11px 14px", marginBottom: 12,
-                border: "1.5px solid #d1d5db", borderRadius: 9, fontSize: 13.5, outline: "none",
-                resize: "vertical", fontFamily: "inherit",
-                color: "#111827", backgroundColor: "#ffffff",
-              }}
             />
             {result?.ok === false && (
               <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 10 }}>{result.msg}</p>

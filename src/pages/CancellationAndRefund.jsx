@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
+import MobileMenu from '../components/layout/MobileMenu';
+import PopupSearch from '../components/layout/PopupSearch';
+import SideMenu from '../components/layout/SideMenu';
 import ScrollTop from '../components/common/ScrollTop';
 import { motion } from 'framer-motion';
 import apiService from '../services/apiServices';
@@ -9,6 +12,9 @@ import { SEO } from '../config/seoConfig';
 
 const CancellationAndRefund = () => {
     useSEO(SEO.cancellationAndRefund);
+    const [showSideMenu, setShowSideMenu] = useState(false);
+    const [showMobileMenu, setShowMobileMenu] = useState(false);
+    const [showSearch, setShowSearch] = useState(false);
     const [content, setContent] = useState("");
     const [sections, setSections] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -74,8 +80,15 @@ const CancellationAndRefund = () => {
 
     return (
         <div className="cr-root">
+            <SideMenu isOpen={showSideMenu} onClose={() => setShowSideMenu(false)} />
+            <PopupSearch isOpen={showSearch} onClose={() => setShowSearch(false)} />
+            <MobileMenu isOpen={showMobileMenu} onClose={() => setShowMobileMenu(false)} />
             <ScrollTop />
-            <Header />
+            <Header
+                onMenuToggle={() => setShowMobileMenu(true)}
+                onSideMenuToggle={() => setShowSideMenu(true)}
+                onSearchToggle={() => setShowSearch(true)}
+            />
 
             {/* ── HERO ── */}
             <section

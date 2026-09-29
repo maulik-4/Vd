@@ -11,6 +11,7 @@ import { Link, useParams } from "react-router-dom";
 import PujaUserDetailsModal from "./pujaUserDetailsModel";
 import LoginOTPModal from "../components/accounts/LoginOTPModel";
 import { useStorage } from "../context/StorageContext";
+import { useSEO } from "../hooks/seoHook";
 
 const IMAGE_PLACEHOLDER =
   "data:image/svg+xml;charset=UTF-8," +
@@ -389,6 +390,16 @@ const PujaDetails = () => {
   const [pujaDetails, setPujaDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const timer = useCountdown(pujaDetails?.pujaDatetime || pujaDetails?.pujaDate);
+
+  useSEO({
+    title: pujaDetails?.pujaName ? `${pujaDetails.pujaName} - Online Booking & Sankalp` : "Online Puja Booking & Sankalp",
+    description: pujaDetails?.aboutPuja
+      ? (typeof pujaDetails.aboutPuja === 'string' ? pujaDetails.aboutPuja.replace(/<[^>]*>/g, '').slice(0, 160) : 'Book authentic Vedic Puja online with live sankalp and prasad delivery.')
+      : "Book authentic Vedic Puja online with live sankalp and prasad delivery at ancient temples through VaidikGuru.",
+    keywords: `${pujaDetails?.pujaName || 'puja'}, online puja booking, vedic puja, temple rituals, VaidikGuru`,
+    canonical: name ? `/puja/${name}/${id}` : `/puja/${id}`,
+    ogImage: pujaDetails?.pujaImage || undefined,
+  });
 
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedPackageData, setSelectedPackageData] = useState(null);

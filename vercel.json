@@ -2,7 +2,6 @@
   "rewrites": [
     { "source": "/user_api/:path*", "destination": "https://admin.vaidikguru.com/user_api/:path*" },
     { "source": "/web/:path*", "destination": "https://admin.vaidikguru.com/web/:path*" },
-    { "source": "/puja/:path*", "destination": "https://admin.vaidikguru.com/puja/:path*" },
     { "source": "/astrologer_api/:path*", "destination": "https://admin.vaidikguru.com/astrologer_api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

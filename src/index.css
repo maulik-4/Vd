@@ -124,3 +124,109 @@ input.input-modern:focus {
   outline: none !important;
 }
 
+/* ===== Recommendation Modal Inputs Fix ===== */
+.rec-modal-input,
+input.rec-modal-input,
+.al-rec-input,
+input.al-rec-input {
+  display: block !important;
+  width: 100% !important;
+  height: 46px !important;
+  min-height: 46px !important;
+  line-height: 1.4 !important;
+  padding: 10px 14px !important;
+  margin-bottom: 12px !important;
+  border: 1.5px solid #d1d5db !important;
+  border-radius: 9px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+}
+
+textarea.rec-modal-input,
+textarea.al-rec-input {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 86px !important;
+  line-height: 1.5 !important;
+  padding: 10px 14px !important;
+  margin-bottom: 12px !important;
+  border: 1.5px solid #d1d5db !important;
+  border-radius: 9px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  resize: vertical !important;
+  font-family: inherit !important;
+}
+
+.rec-modal-input:focus,
+input.rec-modal-input:focus,
+textarea.rec-modal-input:focus,
+.al-rec-input:focus,
+input.al-rec-input:focus,
+textarea.al-rec-input:focus {
+  border-color: #7c1d40 !important;
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  box-shadow: 0 0 0 3px rgba(124, 29, 64, 0.12) !important;
+  outline: none !important;
+}
+
+.rec-modal-input::placeholder,
+input.rec-modal-input::placeholder,
+textarea.rec-modal-input::placeholder,
+.al-rec-input::placeholder,
+input.al-rec-input::placeholder,
+textarea.al-rec-input::placeholder {
+  color: #9ca3af !important;
+  -webkit-text-fill-color: #9ca3af !important;
+  opacity: 1 !important;
+}
+
+/* ===== Global Astrologer Follow Button: Green Tick ===== */
+.al-follow-btn.on,
+.ad-follow-pill.active {
+  background: linear-gradient(135deg, #7c1d40 0%, #991b42 100%) !important;
+  color: #ffffff !important;
+  border-color: #7c1d40 !important;
+}
+
+.al-follow-btn.on i,
+.al-follow-btn.on .fa-check,
+.al-follow-btn.on .fa-user-check,
+.ad-follow-pill.active i,
+.ad-follow-pill.active .fa-check,
+.ad-follow-pill.active .fa-user-check {
+  color: #22c55e !important;
+}
+
+.al-follow-btn.on:hover,
+.ad-follow-pill.active:hover {
+  background: linear-gradient(135deg, #621431 0%, #7c1d40 100%) !important;
+  border-color: #621431 !important;
+}
+
+.al-follow-btn.on:hover i,
+.al-follow-btn.on:hover .fa-check,
+.al-follow-btn.on:hover .fa-user-check,
+.ad-follow-pill.active:hover i,
+.ad-follow-pill.active:hover .fa-check,
+.ad-follow-pill.active:hover .fa-user-check {
+  color: #4ade80 !important;
+}
+

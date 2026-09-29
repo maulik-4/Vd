@@ -16,6 +16,7 @@ import storageService from '../services/storageServices';
 import apiService from '../services/apiServices';
 import { recordGiftTransaction, notifyAstrologerGiftInFirebase } from '../services/giftService';
 import { getAstroPrice, getAstroRating, getAstroReviewCount, getAstroRole, getAstroStatus, getWaitLabel } from '../services/astroHelpers';
+import { useSEO } from '../hooks/seoHook';
 import './AstrologerDetail.css';
 
 /* helpers */
@@ -147,6 +148,16 @@ const AstrologerDetail = () => {
   const [similar, setSimilar] = useState([]);
   const [fallbackSimilar, setFallbackSimilar] = useState([]); // populated from astrologer_list when API sends no similar_astrologers
   const [loading, setLoading] = useState(true);
+
+  useSEO({
+    title: astro?.name ? `Consult ${astro.name} - Vedic Astrologer` : "Consult Vedic Astrologer",
+    description: astro?.bio
+      ? (typeof astro.bio === 'string' ? astro.bio.replace(/<[^>]*>/g, '').slice(0, 160) : `Consult expert Vedic Astrologer ${astro?.name || ''} for horoscope readings, kundli, and remedies.`)
+      : `Connect with expert Vedic Astrologer ${astro?.name || ''} on VaidikGuru for personalized guidance on love, career, and marriage.`,
+    keywords: `${astro?.name || 'astrologer'}, vedic astrology consultation, online astrologer, horoscope, VaidikGuru`,
+    canonical: `/astrologer/${id}`,
+    ogImage: astro?.image || undefined,
+  });
   const [imgErr, setImgErr] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [walletModal, setWalletModal] = useState(null); // null | 'chat' | 'call'
@@ -566,7 +577,7 @@ const fixImgHost = (url) =>
                       <span className="ad-pc-name">{astro.name}</span>
                       <span className="ad-pc-badge"><i className="fas fa-check-circle" /> Verified Expert</span>
                       <button className={`ad-follow-pill ${followed ? 'active' : ''}`} onClick={handleFollowToggle} type="button">
-                        <i className={followed ? 'fas fa-user-check' : 'fas fa-user-plus'} />
+                        <i className={followed ? 'fas fa-check' : 'fas fa-user-plus'} />
                         <span>{followed ? 'Following' : 'Follow'}</span>
                       </button>
                     </div>

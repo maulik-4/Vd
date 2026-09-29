@@ -1,5 +1,4 @@
 /user_api/* https://admin.vaidikguru.com/user_api/:splat 200!
 /web/* https://admin.vaidikguru.com/web/:splat 200!
-/puja/* https://admin.vaidikguru.com/puja/:splat 200!
 /astrologer_api/* https://admin.vaidikguru.com/astrologer_api/:splat 200!
 /* /index.html 200

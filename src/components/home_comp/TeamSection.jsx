@@ -204,7 +204,7 @@ const AstrologerCard = ({ astro, onChat, onFollow }) => {
 						type="button"
 						aria-label={isFollowing ? `Unfollow ${astro.name}` : `Follow ${astro.name}`}
 					>
-						<i className={isFollowing ? 'fas fa-user-check' : 'fas fa-user-plus'} />
+						<i className={isFollowing ? 'fas fa-check' : 'fas fa-user-plus'} />
 						<span>{isFollowing ? 'Following' : 'Follow'}</span>
 					</button>
 				</div>

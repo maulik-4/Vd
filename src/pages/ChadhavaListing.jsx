@@ -249,34 +249,26 @@ const RecommendationModal = ({ isOpen, onClose }) => {
           <form onSubmit={handleSubmit}>
             <input
               type="text"
+              className="rec-modal-input"
               placeholder="Your Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              style={{
-                width: "100%", padding: "11px 14px", marginBottom: 12,
-                border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 13.5, outline: "none",
-              }}
+              required
             />
             <input
               type="tel"
+              className="rec-modal-input"
               placeholder="Phone Number"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              style={{
-                width: "100%", padding: "11px 14px", marginBottom: 12,
-                border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 13.5, outline: "none",
-              }}
+              required
             />
             <textarea
+              className="rec-modal-input"
               placeholder="What are you looking for? (optional)"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={3}
-              style={{
-                width: "100%", padding: "11px 14px", marginBottom: 12,
-                border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 13.5, outline: "none",
-                resize: "vertical", fontFamily: "inherit",
-              }}
             />
             {result?.ok === false && (
               <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 10 }}>{result.msg}</p>

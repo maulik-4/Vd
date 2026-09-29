@@ -10,6 +10,7 @@ import Footer from "../components/layout/Footer";
 import SideMenu from '../components/layout/SideMenu';
 import PopupSearch from '../components/layout/PopupSearch';
 import MobileMenu from '../components/layout/MobileMenu';
+import { useSEO } from '../hooks/seoHook';
 
 
 const useCountdown = (targetDate) => {
@@ -258,6 +259,16 @@ const ChadhavaDetails = () => {
   const [chadhava, setChadhava] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  useSEO({
+    title: chadhava?.chadhavaName ? `${chadhava.chadhavaName} - Sacred Offerings` : "Sacred Chadhava Booking",
+    description: chadhava?.aboutChadhava
+      ? (typeof chadhava.aboutChadhava === 'string' ? chadhava.aboutChadhava.replace(/<[^>]*>/g, '').slice(0, 160) : 'Offer sacred Chadhava at revered temples online with VaidikGuru.')
+      : "Offer sacred Chadhava at revered temples online with authentic rituals, sankalp, and blessings through VaidikGuru.",
+    keywords: `${chadhava?.chadhavaName || 'chadhava'}, temple chadhava, online offering, VaidikGuru`,
+    canonical: `/chadhava/${id}`,
+    ogImage: chadhava?.chadhavaImage || undefined,
+  });
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
