@@ -112,7 +112,18 @@ const Footer = () => {
                             <h4 className="footer-title-modern">{col.title}</h4>
                             <div className="nav flex-column">
                                 {col.items.map((link, i) => (
-                                    <Link key={i} to={link.url} className="footer-link-modern">{link.label}</Link>
+                                    <Link
+                                        key={i}
+                                        to={link.url}
+                                        onClick={() => {
+                                            window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                                            document.documentElement.scrollTop = 0;
+                                            document.body.scrollTop = 0;
+                                        }}
+                                        className="footer-link-modern"
+                                    >
+                                        {link.label}
+                                    </Link>
                                 ))}
                             </div>
                         </div>
@@ -133,8 +144,28 @@ const Footer = () => {
                 <div className="mt-100 pt-40  border-white-10 d-flex flex-wrap justify-content-between align-items-center">
                     <p className="small text-white-50 opacity-30 mb-0">© 2025 VaidikGuru</p>
                     <div className="d-flex gap-4 mt-3 mt-md-0">
-                        <Link to="/privacy_policy" className="small text-white-50 text-decoration-none hover-white">Privacy Policy</Link>
-                        <Link to="/terms_of_use" className="small text-white-50 text-decoration-none hover-white">Terms of Service</Link>
+                        <Link
+                            to="/privacy_policy"
+                            onClick={() => {
+                                window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                                document.documentElement.scrollTop = 0;
+                                document.body.scrollTop = 0;
+                            }}
+                            className="small text-white-50 text-decoration-none hover-white"
+                        >
+                            Privacy Policy
+                        </Link>
+                        <Link
+                            to="/terms_of_use"
+                            onClick={() => {
+                                window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                                document.documentElement.scrollTop = 0;
+                                document.body.scrollTop = 0;
+                            }}
+                            className="small text-white-50 text-decoration-none hover-white"
+                        >
+                            Terms of Service
+                        </Link>
                     </div>
                 </div>
             </div>

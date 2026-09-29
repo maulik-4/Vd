@@ -8,6 +8,15 @@ const MobileMenu = ({ isOpen, onClose }) => {
 			? location.pathname === '/'
 			: location.pathname.startsWith(path);
 
+	const handleNavClick = () => {
+		onClose();
+		window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+		document.documentElement.scrollTop = 0;
+		document.body.scrollTop = 0;
+		const root = document.getElementById('root');
+		if (root) root.scrollTop = 0;
+	};
+
 	return (
 		<div
 			className={`th-menu-wrapper onepage-nav ${
@@ -20,7 +29,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
 					<i className="fal fa-times"></i>
 				</button>
 				<div className="mobile-logo">
-					<Link to="/" onClick={onClose}>
+					<Link to="/" onClick={handleNavClick}>
 						<img src="/assets/img/logo123.svg" alt="VaidikGuru" />
 					</Link>
 				</div>
@@ -30,7 +39,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
 							<Link
 								className={isActive('/') ? 'active' : ''}
 								to="/"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
 								Home
 							</Link>
@@ -39,7 +48,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
 							<Link
 								className={isActive('/about_us') ? 'active' : ''}
 								to="/about_us"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
 								About Us
 							</Link>
@@ -48,7 +57,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
 							<Link
 								className={isActive('/puja') ? 'active' : ''}
 								to="/puja"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
 								Book YourPuja
 							</Link>
@@ -57,7 +66,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
 							<Link
 								className={isActive('/chadhava') ? 'active' : ''}
 								to="/chadhava"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
 								Book Your Chadhava
 							</Link>
@@ -66,7 +75,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
 							<Link
 								className={isActive('/astrologer') ? 'active' : ''}
 								to="/astrologer"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
 								Consult With Astrologer
 							</Link>
@@ -75,16 +84,16 @@ const MobileMenu = ({ isOpen, onClose }) => {
 							<Link
 								className={isActive('/live-astrologer') ? 'active' : ''}
 								to="/live-astrologer"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
-							Live Astrologers
+								Live Astrologers
 							</Link>
 						</li>
 						<li>
 							<Link
 								className={isActive('/panchang') ? 'active' : ''}
 								to="/panchang"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
 								Panchang
 							</Link>
@@ -93,7 +102,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
 							<Link
 								className={isActive('/astrology_calculator_hub') ? 'active' : ''}
 								to="/astrology_calculator_hub"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
 								Astrology Tools
 							</Link>
@@ -102,7 +111,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
 							<Link
 								className={isActive('/horoscope') ? 'active' : ''}
 								to="/horoscope"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
 								Horoscope
 							</Link>
@@ -111,7 +120,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
 							<Link
 								className={isActive('/contact_us') ? 'active' : ''}
 								to="/contact_us"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
 								Contact us
 							</Link>
@@ -120,7 +129,7 @@ const MobileMenu = ({ isOpen, onClose }) => {
 							<Link
 								className={isActive('/notification') ? 'active' : ''}
 								to="/notification"
-								onClick={onClose}
+								onClick={handleNavClick}
 							>
 								Notification
 							</Link>
