@@ -35,6 +35,19 @@ const getChatPrice  = a => rate(a?.per_min_chat,       a?.per_min_chat_offer);
 const getVoicePrice = a => rate(a?.per_min_voice_call, a?.per_min_voice_call_offer);
 const getVideoPrice = a => rate(a?.per_min_video_call, a?.per_min_video_call_offer);
 const isOn = v => String(v || '').toLowerCase() === 'on';
+// 🔥 Boost badge — same fire icon the astrologer list shows on boosted
+// Chat / Call / Video buttons (is_boost_chat / is_boost_call / is_boost_video).
+const BOOST_FIRE_STYLE = {
+  position: 'absolute', top: -9, right: -9, zIndex: 2,
+  width: 22, height: 22, borderRadius: '50%',
+  background: '#fff', color: '#f97316', border: '1.5px solid #fdba74',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  fontSize: 11, boxShadow: '0 2px 6px rgba(249,115,22,0.35)', pointerEvents: 'none',
+};
+const BoostFire = ({ label }) => (
+  <i className="fas fa-fire ad-boost-fire" style={BOOST_FIRE_STYLE} aria-label={label} />
+);
+
 const isEnabledFlag = v => v === true || v === 1 || v === '1' || String(v || '').toLowerCase() === 'true' || isOn(v);
 
 // Converts "2025-06-23 16:35:17" style API dates into "5 days ago"
@@ -261,6 +274,11 @@ const AstrologerDetail = () => {
         is_voice_online: live.is_voice_online,
         is_video_online: live.is_video_online,
         watting_time: live.watting_time,
+        is_boost_chat: live.is_boost_chat ?? prev.is_boost_chat,
+        is_boost_call: live.is_boost_call ?? prev.is_boost_call,
+        is_boost_video: live.is_boost_video ?? prev.is_boost_video,
+        is_emergency_chat: live.is_emergency_chat ?? prev.is_emergency_chat,
+        is_emergency_call: live.is_emergency_call ?? prev.is_emergency_call,
         per_min_chat: live.per_min_chat ?? prev.per_min_chat,
         per_min_voice_call: live.per_min_voice_call ?? prev.per_min_voice_call,
         per_min_video_call: live.per_min_video_call ?? prev.per_min_video_call,
@@ -474,6 +492,9 @@ const fixImgHost = (url) =>
   const canChat = isOn(astro.is_chat_online) || emergencyChat;
   const canCall = isOn(astro.is_voice_online) || emergencyCall;
   const canVideo = isOn(astro.is_video_online);
+  const boostChat = isEnabledFlag(astro.is_boost_chat);
+  const boostCall = isEnabledFlag(astro.is_boost_call);
+  const boostVideo = isEnabledFlag(astro.is_boost_video);
   const hasEmergencyAccess = !isBusy && (emergencyChat || emergencyCall);
   const cats = (Array.isArray(astro.category) ? astro.category : []).map(c => typeof c === 'object' ? (c.name || c.category_name || c.title) : c).filter(Boolean);
   const astroRole = getAstroRole(astro);
@@ -764,11 +785,13 @@ const fixImgHost = (url) =>
                     </>
                   ) : isOnline || canChat || canCall ? (
                     <>
-                      {canChat && <button className="ad-btn-chat" onClick={() => handleChatCallClick('chat')}>
+                      {canChat && <button className="ad-btn-chat" style={{ position: 'relative', overflow: 'visible' }} onClick={() => handleChatCallClick('chat')}>
+                        {boostChat && <BoostFire label="Boosted chat" />}
                         <div className="ad-btn-chat-main"><i className="fas fa-comment-dots" style={{ fontSize: 16 }} />Chat Now</div>
                         <div className="ad-btn-chat-sub">Get instant guidance</div>
                       </button>}
-                      {canCall && <button className="ad-btn-call" onClick={() => handleChatCallClick('call')}>
+                      {canCall && <button className="ad-btn-call" style={{ position: 'relative', overflow: 'visible' }} onClick={() => handleChatCallClick('call')}>
+                        {boostCall && <BoostFire label="Boosted call" />}
                         <div className="ad-btn-call-main"><i className="fas fa-phone" style={{ fontSize: 15 }} />Call Now</div>
                         <div className="ad-btn-call-sub">Start a call session</div>
                       </button>}
@@ -778,6 +801,7 @@ const fixImgHost = (url) =>
                         rel="noopener noreferrer"
                         className="ad-btn-video"
                         style={{
+                          position: 'relative',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
@@ -792,6 +816,7 @@ const fixImgHost = (url) =>
                           transition: 'all 0.2s ease',
                         }}
                       >
+                        {boostVideo && <BoostFire label="Boosted video call" />}
                         <div style={{ textAlign: 'left' }}>
                           <div style={{ fontSize: '14px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <i className="fas fa-video" style={{ fontSize: 15, color: '#f59e0b' }} /> Video Call
@@ -1206,11 +1231,13 @@ const fixImgHost = (url) =>
           </>
         ) : isOnline || canChat || canCall ? (
           <>
-            {canChat && <button className="ad-mobile-chat-btn" onClick={() => handleChatCallClick('chat')}>
+            {canChat && <button className="ad-mobile-chat-btn" style={{ position: 'relative', overflow: 'visible' }} onClick={() => handleChatCallClick('chat')}>
+              {boostChat && <BoostFire label="Boosted chat" />}
               <i className="fas fa-comment-dots" />
               <span>{emergencyChat && !isOn(astro.is_chat_online) ? 'Emergency Chat' : 'Chat Now'}</span>
             </button>}
-            {canCall && <button className="ad-mobile-call-btn" onClick={() => handleChatCallClick('call')}>
+            {canCall && <button className="ad-mobile-call-btn" style={{ position: 'relative', overflow: 'visible' }} onClick={() => handleChatCallClick('call')}>
+              {boostCall && <BoostFire label="Boosted call" />}
               <i className="fas fa-phone" />
               <span>Call Now</span>
             </button>}
@@ -1219,8 +1246,10 @@ const fixImgHost = (url) =>
               target="_blank"
               rel="noopener noreferrer"
               className="ad-mobile-video-btn"
+              style={{ position: 'relative', overflow: 'visible' }}
               title={`Video Call${getVideoPrice(astro) !== null ? ` (₹${getVideoPrice(astro)}/min)` : ''}`}
             >
+              {boostVideo && <BoostFire label="Boosted video call" />}
               <i className="fas fa-video" />
             </a>}
           </>

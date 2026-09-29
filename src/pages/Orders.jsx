@@ -7,6 +7,7 @@ import SideMenu from '../components/layout/SideMenu';
 import PopupSearch from '../components/layout/PopupSearch';
 import MobileMenu from '../components/layout/MobileMenu';
 import apiService from '../services/apiServices';
+import storageService from '../services/storageServices';
 import { mergeGiftTransactions } from '../services/giftService';
 import './Orders.css';
 
@@ -25,12 +26,10 @@ const formatTimeString = (date) => {
     return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
 };
 
-// Map one row from the /user_api/transaction response into the shape the
-// page renders (id, name, duration, type, date/time, status, price, category).
-const mapApiTransaction = (t) => {
-    const rawDate = (t.transaction_date || t.created_at || t.date || '').trim();
-    const isoish = rawDate.replace(' ', 'T');
-    let dateObj = new Date(isoish);
+const parseAnyDate = (raw) => {
+    const rawDate = String(raw || '').trim();
+    if (!rawDate) return new Date();
+    let dateObj = new Date(rawDate.replace(' ', 'T'));
     if (isNaN(dateObj.getTime())) {
         const m = rawDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{1,2}):(\d{1,2})$/);
         if (m) {
@@ -38,10 +37,77 @@ const mapApiTransaction = (t) => {
             dateObj = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s));
         }
     }
-    const validDate = isNaN(dateObj.getTime()) ? new Date() : dateObj;
+    return isNaN(dateObj.getTime()) ? new Date() : dateObj;
+};
 
-    const minutes = parseInt(t.time || t.duration || t.call_duration || t.minutes, 10);
-    const duration = !isNaN(minutes) && minutes > 0 ? `${minutes} min` : '-';
+// Pull the array out of whatever wrapper the backend used.
+const extractList = (res, extraKeys = []) => {
+    if (!res) return [];
+    if (Array.isArray(res)) return res;
+    const keys = [...extraKeys, 'results', 'data', 'result', 'record', 'records', 'bookings', 'list', 'transactions'];
+    for (const k of keys) {
+        const v = res[k];
+        if (Array.isArray(v)) return v;
+        if (v && Array.isArray(v.data)) return v.data;
+    }
+    // Last resort: first array of objects anywhere in the response (2 levels deep).
+    const findArr = (obj, depth) => {
+        if (!obj || typeof obj !== 'object' || depth > 2) return null;
+        for (const v of Object.values(obj)) {
+            if (Array.isArray(v) && v.length && typeof v[0] === 'object') return v;
+        }
+        for (const v of Object.values(obj)) {
+            const found = !Array.isArray(v) && findArr(v, depth + 1);
+            if (found) return found;
+        }
+        return null;
+    };
+    return findArr(res, 0) || [];
+};
+
+// Try the preferred method, then the other one. Stop as soon as the server
+// answers successfully (even with an empty list) so we don't fire extra
+// failing requests. Every failure is logged with its HTTP status so the
+// real cause is visible in the console.
+// (apiService already uses baseURL https://admin.vaidikguru.com, so there
+// is no need for a separate absolute-URL retry.)
+const fetchWithFallback = async (path, { method = 'post', extraKeys = [] } = {}) => {
+    const other = method === 'post' ? 'get' : 'post';
+    const statuses = [];
+
+    for (const m of [method, other]) {
+        try {
+            const res = m === 'get'
+                ? await apiService.getBearer(path)
+                : await apiService.postBearer(path, {});
+            const list = extractList(res, extraKeys);
+            if (list.length === 0) {
+                console.info(`[Orders] ${m.toUpperCase()} ${path} → OK but no list found`, res);
+            }
+            return { list, authError: false };
+        } catch (err) {
+            const status = err?.response?.status;
+            statuses.push(status);
+            console.warn(
+                `[Orders] ${m.toUpperCase()} ${path} failed → status ${status ?? 'network/CORS'}`,
+                err?.response?.data || err?.message
+            );
+        }
+    }
+    const authError = statuses.length > 0 && statuses.every(s => s === 401 || s === 403);
+    return { list: [], authError };
+};
+
+// Map one row from the /user_api/transaction response into the shape the
+// page renders (id, name, duration, type, date/time, status, price, category).
+const mapApiTransaction = (t) => {
+    const validDate = parseAnyDate(t.transaction_date || t.created_at || t.date || t.createdAt);
+
+    const minutesFloat = parseFloat(t.time || t.duration || t.call_duration || t.minutes);
+    const durationSec = !isNaN(minutesFloat) && minutesFloat > 0 ? Math.round(minutesFloat * 60) : 0;
+    const duration = durationSec > 0
+        ? `${Math.floor(durationSec / 60)}m ${String(durationSec % 60).padStart(2, '0')}s`
+        : '-';
 
     const rawType = (t.call_type || t.type || t.category || t.transaction_type || '').toLowerCase();
     const desc = (t.description || t.title || t.message || '').toLowerCase();
@@ -49,30 +115,41 @@ const mapApiTransaction = (t) => {
     const astroName = (t.astro_name || t.astrologer_name || t.name || '').trim();
     const giftName = (t.gift_title || t.gift_name || t.gift || '').trim();
 
+    // Gift check FIRST, on strong signals only — so a gift whose description
+    // happens to mention "chat"/"call" never lands in the wrong tab.
+    const isGift =
+        t.is_gift_api ||
+        rawType.includes('gift') ||
+        String(t.transaction_type || '').toLowerCase().includes('gift') ||
+        !!(t.gift_id || t.giftId || t.gift_title || t.gift_name);
+
     let category;
-    if (rawType.includes('video') || desc.includes('video')) {
+    if (isGift) {
+        category = 'Gift';
+    } else if (rawType.includes('video') || desc.includes('video')) {
         category = 'Video';
     } else if (rawType.includes('chat') || desc.includes('chat')) {
         category = 'Chat';
     } else if (rawType.includes('audio') || rawType.includes('call') || desc.includes('call') || desc.includes('audio')) {
         category = 'Call';
     } else if (
-        rawType.includes('gift') || 
-        desc.includes('gift') || 
+        rawType.includes('gift') ||
+        desc.includes('gift') ||
         t.gift_id || t.giftId || giftName ||
         (rawType === 'normal' && (astroName || t.to || t.astrologer_id || desc.includes('gift')))
     ) {
         category = 'Gift';
     } else if (
-        rawType.includes('puja') || 
-        rawType.includes('pooja') || 
-        rawType.includes('chadhava') || 
-        desc.includes('puja') || 
-        desc.includes('pooja') || 
-        desc.includes('chadhava') || 
+        rawType.includes('puja') ||
+        rawType.includes('pooja') ||
+        rawType.includes('chadhava') ||
+        desc.includes('puja') ||
+        desc.includes('pooja') ||
+        desc.includes('chadhava') ||
         desc.includes('sankalp')
     ) {
-        category = 'Other';
+        category = (rawType.includes('chadhava') || desc.includes('chadhava') || desc.includes('chadava'))
+            ? 'Chadhava' : 'Puja';
     } else {
         category = 'Wallet';
     }
@@ -81,8 +158,9 @@ const mapApiTransaction = (t) => {
     if (category === 'Video') typeLabel = 'Video Call';
     else if (category === 'Chat') typeLabel = 'Chat Consultation';
     else if (category === 'Call') typeLabel = 'Audio Call';
-    else if (category === 'Gift') typeLabel = giftName ? `Gift: ${giftName}` : (t.description || 'Gift Sent to Astrologer');
-    else if (category === 'Other') typeLabel = t.puja_name || t.description || 'Puja / Sacred Offering';
+    else if (category === 'Gift') typeLabel = `${giftName ? `Gift: ${giftName}` : (t.description || 'Gift Sent to Astrologer')} • Paid from Wallet`;
+    else if (category === 'Puja') typeLabel = t.puja_name || t.description || 'Puja Booking';
+    else if (category === 'Chadhava') typeLabel = t.description || 'Chadhava Offering';
     else typeLabel = t.description || t.type || 'Wallet Transaction';
 
     const amount = Number(t.amount || t.price || t.total_amount) || 0;
@@ -90,10 +168,11 @@ const mapApiTransaction = (t) => {
 
     const daysAgo = Math.floor((Date.now() - validDate.getTime()) / (1000 * 60 * 60 * 24));
 
-    const titleName = (astroName || t.puja_name || '').trim() || 
-        (category === 'Wallet' ? (t.description || 'Wallet Recharge') : 
-         category === 'Gift' ? (giftName ? `Gift: ${giftName}` : (astroName ? `Gift to ${astroName}` : 'Gift to Astrologer')) : 
-         category === 'Other' ? (t.description || 'Puja Offering') : 'VaidikGuru Service');
+    const titleName = (astroName || t.puja_name || '').trim() ||
+        (category === 'Wallet' ? (t.description || 'Wallet Recharge') :
+         category === 'Gift' ? (giftName ? `Gift: ${giftName}` : (astroName ? `Gift to ${astroName}` : 'Gift to Astrologer')) :
+         category === 'Puja' ? (t.description || 'Puja Booking') :
+         category === 'Chadhava' ? (t.description || 'Chadhava Offering') : 'VaidikGuru Service');
 
     return {
         uid: t.id || t.order_id || t.transaction_id || Math.random().toString(),
@@ -108,7 +187,54 @@ const mapApiTransaction = (t) => {
         daysAgo,
         status: t.status ? (String(t.status).charAt(0).toUpperCase() + String(t.status).slice(1)) : 'Completed',
         price,
-        category
+        category,
+        durationSec
+    };
+};
+
+// Map a Puja / Chadhava booking (from /puja/mypujabookings or /puja/mychdhavabookings)
+// into the same row shape. These show under the "Puja" / "Chadhava" tabs.
+const mapBooking = (b, kind) => {
+    const validDate = parseAnyDate(b.createdAt || b.created_at || b.puja_date || b.booking_date);
+    const daysAgo = Math.floor((Date.now() - validDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    const payStatus = String(b.payment_status || b.status || '').toLowerCase();
+    const payMode = String(b.payment_mode || '').toLowerCase();
+    let status;
+    if (['success', 'paid', 'completed', 'confirmed'].includes(payStatus) || payMode === 'wallet') status = 'Completed';
+    else if (payStatus === 'failed') status = 'Failed';
+    else status = 'Pending';
+
+    const amount = Number(
+        b.total_amount ?? b.grand_total ?? b.final_amount ?? b.amount ??
+        (kind === 'puja' ? b.puja_amount : b.chadhava_amount) ?? 0
+    ) || 0;
+
+    const isPuja = kind === 'puja';
+    const title = isPuja
+        ? (b.puja_id?.title || b.puja_name || b.puja_title || (b.puja_type ? `${b.puja_type} Puja` : 'Puja Booking'))
+        : (b.chadhava_id?.title || b.chadhava_name || b.chadhava_title || b.puja_id?.title || 'Chadhava Offering');
+
+    const bookingId = isPuja
+        ? (b.puja_booking_id || b.booking_id || b._id)
+        : (b.chadhava_booking_id || b.booking_id || b._id);
+
+    return {
+        uid: `${kind}_${b._id || bookingId || Math.random().toString()}`,
+        id: bookingId || 'N/A',
+        name: title,
+        verified: true,
+        duration: '-',
+        type: isPuja ? `Puja Booking${b.payment_mode ? ` • Paid via ${b.payment_mode}` : ''}` : `Chadhava Offering${b.payment_mode ? ` • Paid via ${b.payment_mode}` : ''}`,
+        date: formatDateString(validDate),
+        time: formatTimeString(validDate),
+        dateObj: validDate,
+        daysAgo,
+        status,
+        price: -amount,
+        category: isPuja ? 'Puja' : 'Chadhava',
+        bookingKind: kind,
+        raw: b,
     };
 };
 
@@ -137,90 +263,117 @@ const OrdersPage = () => {
     const dropdownRef = useRef(null);
     const itemsPerPage = 4;
 
-    // Fetch real transactions from the API and merge with local gift logs
-    const fetchTransactions = async () => {
+    // Fetch ALL order history in parallel:
+    //   - /user_api/transaction       → Call / Chat / Video / Wallet (+ some puja debits)
+    //   - /user_api/gift_transaction  → Gift
+    //   - /puja/mypujabookings        → Puja tab
+    //   - /puja/mychdhavabookings     → Chadhava tab
+    // Each history source is kept separately and shown AS SOON AS it arrives,
+    // so a slow/failing puja or gift API never blocks Call/Chat/Video/Wallet.
+    const [txList, setTxList] = useState([]);         // /user_api/transaction
+    const [giftApiList, setGiftApiList] = useState([]); // /user_api/gift_transaction
+    const [bookingRows, setBookingRows] = useState([]); // puja + chadhava
+    const [walletBalance, setWalletBalance] = useState(null); // from /user_api/get_profile
+
+    const fetchTransactions = () => {
         setIsLoading(true);
         setLoadError(null);
-        try {
-            let json = await apiService.postBearer('/user_api/transaction', {}).catch(() => null);
-            if (!json || (!json.status && !json.results && !json.transactions && !json.data)) {
-                json = await apiService.postBearer('https://admin.vaidikguru.com/user_api/transaction', {}).catch(() => null);
-            }
 
-            let apiList = [];
-            if (json) {
-                if (json.result && json.transactions && Array.isArray(json.transactions.data)) {
-                    apiList = json.transactions.data;
-                } else if (json.transactions && Array.isArray(json.transactions.data)) {
-                    apiList = json.transactions.data;
-                } else if (Array.isArray(json.transactions)) {
-                    apiList = json.transactions;
-                } else if (Array.isArray(json.data)) {
-                    apiList = json.data;
-                } else if (Array.isArray(json.results)) {
-                    apiList = json.results;
-                } else if (Array.isArray(json.records)) {
-                    apiList = json.records;
-                } else if (Array.isArray(json.record)) {
-                    apiList = json.record;
-                } else if (Array.isArray(json.list)) {
-                    apiList = json.list;
-                }
-            }
+        // Token may live in localStorage, cookie or sessionStorage (storageService
+        // keeps all three). apiService only reads localStorage, so copy it there
+        // first — otherwise the request goes out without the Authorization header.
+        const token = storageService.getToken();
+        if (token && !localStorage.getItem('token')) {
+            localStorage.setItem('token', token);
+        }
 
-            // Fetch server-side gift transactions via GET /user_api/gift_transaction
-            let giftJson = await apiService.getBearer('/user_api/gift_transaction').catch(() => null);
-            if (!giftJson) {
-                giftJson = await apiService.getBearer('https://admin.vaidikguru.com/user_api/gift_transaction').catch(() => null);
-            }
+        // 1) Main list — Call / Chat / Video / Wallet. Same call the page used
+        //    before (POST with empty body). Controls the loader.
+        apiService.postBearer('/user_api/transaction', {})
+            .then((res) => {
+                const list = extractList(res);
+                console.info(`[Orders] /user_api/transaction → ${list.length} rows`);
+                setTxList(list);
+            })
+            .catch((err) => {
+                console.warn('[Orders] /user_api/transaction failed → status',
+                    err?.response?.status ?? 'network/CORS', err?.response?.data || err?.message);
+                setLoadError('Could not load your transactions. Please try again.');
+            })
+            .finally(() => setIsLoading(false));
 
-            let giftList = [];
-            if (giftJson) {
-                let rawGiftArr = [];
-                if (Array.isArray(giftJson.data)) rawGiftArr = giftJson.data;
-                else if (Array.isArray(giftJson.results)) rawGiftArr = giftJson.results;
-                else if (Array.isArray(giftJson.record)) rawGiftArr = giftJson.record;
-                else if (Array.isArray(giftJson.records)) rawGiftArr = giftJson.records;
-                else if (Array.isArray(giftJson.transactions)) rawGiftArr = giftJson.transactions;
-                else if (Array.isArray(giftJson.result?.data)) rawGiftArr = giftJson.result.data;
-                else if (Array.isArray(giftJson.result)) rawGiftArr = giftJson.result;
-                else if (Array.isArray(giftJson)) rawGiftArr = giftJson;
-
-                giftList = rawGiftArr.map((g, idx) => ({
+        // 2) Gifts — GET ONLY. (POST /user_api/gift_transaction is the SEND-gift
+        //    API, so it must never be used as a history fallback.)
+        apiService.getBearer('/user_api/gift_transaction')
+            .then((res) => {
+                const list = extractList(res, ['gifts', 'gift_transactions', 'giftTransactions', 'history']);
+                console.info(`[Orders] GET /user_api/gift_transaction → ${list.length} rows`, res);
+                setGiftApiList(list.map((g, idx) => ({
                     ...g,
                     id: g.id || g._id || g.order_id || g.transaction_id || `gift_api_${idx}_${g.gift_id || ''}`,
                     is_gift_api: true,
                     category: 'Gift',
-                    type: g.type || 'gift',
-                    transaction_type: g.transaction_type || 'gift',
-                }));
-            }
+                    type: 'gift',
+                    transaction_type: 'gift',
+                    // common field names for gift title / astrologer
+                    gift_title: g.gift_title || g.gift_name || g.title || g.giftId?.title || g.gift_id?.title || g.gift?.title || '',
+                    astro_name: g.astro_name || g.astrologer_name || g.to_name || g.to?.name || g.astrologer_id?.name || g.astrologer?.name || '',
+                    amount: g.amount ?? g.price ?? g.gift_price ?? g.giftId?.price ?? g.gift_id?.price ?? 0,
+                    amount_type: g.amount_type || 'debit',
+                    transaction_date: g.transaction_date || g.created_at || g.createdAt || g.date,
+                })));
+            })
+            .catch((err) => {
+                console.warn('[Orders] GET /user_api/gift_transaction failed → status',
+                    err?.response?.status ?? 'network/CORS', err?.response?.data || err?.message);
+            });
 
-            const combinedApi = [...apiList, ...giftList];
-            const merged = mergeGiftTransactions(combinedApi);
-            const mapped = merged.map(mapApiTransaction);
-            setApiTransactions(mapped);
+        // 4) Current wallet balance (shown on the Wallet / Gift / Puja / Chadhava tabs)
+        apiService.getBearer('/user_api/get_profile')
+            .then((res) => {
+                const r = res?.results || res?.data || {};
+                const raw = r.wallet ?? r.wallet_amount ?? r.wallet_balance ?? r.balance
+                    ?? res?.results_web?.wallet ?? res?.wallet ?? null;
+                const n = Number(raw);
+                if (raw !== null && !Number.isNaN(n)) setWalletBalance(n);
+            })
+            .catch(() => {});
 
-            // If default 'Call' category has no data, automatically select the first category that HAS data
-            if (mapped.length > 0) {
-                const hasCallData = mapped.some(item => item.category === 'Call');
-                if (!hasCallData) {
-                    const firstWithData = ['Chat', 'Wallet', 'Other', 'Gift', 'Video'].find(catKey => 
-                        mapped.some(item => item.category === catKey)
-                    );
-                    if (firstWithData) {
-                        setActiveCategory(firstWithData);
-                    }
-                }
-            }
-        } catch (err) {
-            console.error('Failed to load transactions:', err);
-            const localOnly = mergeGiftTransactions([]);
-            setApiTransactions(localOnly.map(mapApiTransaction));
-        } finally {
-            setIsLoading(false);
-        }
+        // 3) Puja + Chadhava bookings — their own tabs
+        Promise.all([
+            fetchWithFallback('/puja/mypujabookings', { method: 'post', extraKeys: ['bookPooja'] }),
+            fetchWithFallback('/puja/mychdhavabookings', { method: 'post', extraKeys: ['chadhavaBookings', 'bookPooja'] }),
+        ]).then(([puja, chadhava]) => setBookingRows([
+            ...puja.list.map(b => mapBooking(b, 'puja')),
+            ...chadhava.list.map(b => mapBooking(b, 'chadhava')),
+        ]));
     };
+
+    // Combine all sources whenever any of them changes.
+    useEffect(() => {
+        let mapped = mergeGiftTransactions([...txList, ...giftApiList]).map(mapApiTransaction);
+        // Booking APIs are the source of truth for Puja / Chadhava — drop the
+        // wallet-debit copies of the same booking so nothing shows twice.
+        if (bookingRows.some(r => r.category === 'Puja')) {
+            mapped = mapped.filter(item => item.category !== 'Puja');
+        }
+        if (bookingRows.some(r => r.category === 'Chadhava')) {
+            mapped = mapped.filter(item => item.category !== 'Chadhava');
+        }
+        setApiTransactions([...mapped, ...bookingRows].sort((a, b) => b.dateObj - a.dateObj));
+    }, [txList, giftApiList, bookingRows]);
+
+    // If the current tab is empty once data arrives, jump to the first tab that has data.
+    useEffect(() => {
+        if (apiTransactions.length === 0) return;
+        if (apiTransactions.some(item => item.category === activeCategory)) return;
+        const firstWithData = ['Call', 'Chat', 'Video', 'Puja', 'Chadhava', 'Gift'].find(catKey =>
+            apiTransactions.some(item => item.category === catKey)
+        );
+        if (firstWithData) setActiveCategory(firstWithData);
+        // only on data change, not when the user clicks a tab
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [apiTransactions]);
 
     useEffect(() => {
         fetchTransactions();
@@ -269,8 +422,8 @@ const OrdersPage = () => {
         { key: 'Call', label: 'Call', icon: 'fas fa-phone-alt' },
         { key: 'Chat', label: 'Chat', icon: 'fas fa-comment-alt' },
         { key: 'Video', label: 'Video', icon: 'fas fa-video' },
-        { key: 'Wallet', label: 'Wallet', icon: 'fas fa-wallet' },
-        { key: 'Other', label: 'Other', icon: 'fas fa-th-large' },
+        { key: 'Puja', label: 'Puja', icon: 'fas fa-om' },
+        { key: 'Chadhava', label: 'Chadhava', icon: 'fas fa-hands' },
         { key: 'Gift', label: 'Gift', icon: 'fas fa-gift' }
     ];
 
@@ -295,32 +448,20 @@ const OrdersPage = () => {
 
     // Stats calculations
     const calculateStats = () => {
-        // Total Orders
         const totalOrders = filteredList.length;
 
-        // Total Spent
         const totalSpent = filteredList.reduce((sum, item) => {
-            // Deduct from spent if item price is negative, recharge adds value so do not count as "spent"
             if (item.price < 0) {
                 return sum + Math.abs(item.price);
             }
             return sum;
         }, 0);
 
-        // Completed
         const completedCount = filteredList.filter(item => item.status === 'Completed' || item.status === 'Confirmed').length;
         const completionRate = totalOrders > 0 ? Math.round((completedCount / totalOrders) * 100) : 0;
 
-        // Total Duration (for Call/Chat/Video)
-        let totalMinutes = 0;
-        filteredList.forEach(item => {
-            if (item.duration && item.duration !== '-') {
-                const mins = parseInt(item.duration.replace(' min', ''), 10);
-                if (!isNaN(mins)) {
-                    totalMinutes += mins;
-                }
-            }
-        });
+        const totalSec = filteredList.reduce((sum, item) => sum + (item.durationSec || 0), 0);
+        const totalMinutes = Math.round(totalSec / 60);
 
         const hrs = Math.floor(totalMinutes / 60);
         const mins = totalMinutes % 60;
@@ -336,6 +477,7 @@ const OrdersPage = () => {
     };
 
     const stats = calculateStats();
+    const showDuration = ['Call', 'Chat', 'Video'].includes(activeCategory);
 
     // Pagination slice
     const totalPages = Math.ceil(filteredList.length / itemsPerPage) || 1;
@@ -344,12 +486,21 @@ const OrdersPage = () => {
 
     // Call/Chat again handler
     const handleAction = (item) => {
+        // Puja / Chadhava bookings open their own details page
+        if (item.bookingKind === 'puja' && item.raw?._id) {
+            navigate(`/my-puja-booking/${item.raw._id}`, { state: { booking: item.raw } });
+            return;
+        }
+        if (item.bookingKind === 'chadhava' && item.raw?._id) {
+            navigate(`/my-chadhava-booking/${item.raw._id}`, { state: { booking: item.raw } });
+            return;
+        }
+
         if (activeCategory === 'Call') {
             setNotification({
                 type: 'Call',
                 message: `Initiating Call back to ${item.name}... Please wait.`
             });
-            // Simulate redirection after delay
             setTimeout(() => {
                 navigate(`/astrologer`);
             }, 2500);
@@ -375,20 +526,23 @@ const OrdersPage = () => {
             case 'Chat': return 'fas fa-comment-alt';
             case 'Video': return 'fas fa-video';
             case 'Wallet': return 'fas fa-wallet';
-            case 'Other': return 'fas fa-om';
+            case 'Puja': return 'fas fa-om';
+            case 'Chadhava': return 'fas fa-hands';
             case 'Gift': return 'fas fa-gift';
             default: return 'fas fa-receipt';
         }
     };
 
     // Helper for action button label
-    const getActionBtnLabel = (category) => {
+    const getActionBtnLabel = (category, item) => {
+        if (item?.bookingKind) return 'View Details';
         switch (category) {
             case 'Call': return 'Call Again';
             case 'Chat': return 'Chat Again';
             case 'Video': return 'Video Again';
             case 'Wallet': return 'Recharge';
-            case 'Other': return 'Book Again';
+            case 'Puja': return 'Book Again';
+            case 'Chadhava': return 'Offer Again';
             case 'Gift': return 'Send Gift';
             default: return 'View';
         }
@@ -449,6 +603,45 @@ const OrdersPage = () => {
                         <h1>Orders & Transactions</h1>
                         <p>View all your activities, purchases, and wallet usage.</p>
                     </div>
+
+                    {/* Wallet balance — shown in the header, in front of the banner image */}
+                    <div
+                        onClick={() => navigate('/recharge-now')}
+                        title="Recharge wallet"
+                        style={{
+                            position: 'relative',
+                            zIndex: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '14px',
+                            background: '#ffffff',
+                            border: '1px solid #f3dcd0',
+                            borderRadius: '16px',
+                            padding: '14px 20px',
+                            boxShadow: '0 8px 24px rgba(122, 12, 12, 0.08)',
+                            cursor: 'pointer',
+                            marginLeft: 'auto',
+                            marginRight: '24px',
+                            flexShrink: 0,
+                        }}
+                    >
+                        <div style={{
+                            width: '46px', height: '46px', borderRadius: '50%',
+                            background: '#fdecea', color: '#7a0c0c',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px',
+                        }}>
+                            <i className="fas fa-wallet"></i>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                            <span style={{ fontSize: '13px', color: '#777' }}>Wallet Balance</span>
+                            <span style={{ fontSize: '22px', fontWeight: 700, color: '#2b2b2b' }}>
+                                {walletBalance === null ? '—' : `₹ ${walletBalance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+                            </span>
+                            <span style={{ fontSize: '12px', color: '#7a0c0c', fontWeight: 600 }}>
+                                <i className="fas fa-plus-circle"></i> Recharge
+                            </span>
+                        </div>
+                    </div>
                     <div className="orders-header-right">
                         <img
                             src="/assets/img/images/profile-hero-banner.png"
@@ -503,7 +696,10 @@ const OrdersPage = () => {
                 </div>
 
                 {/* Stats Grid */}
-                <div className="orders-stats-grid">
+                <div
+                    className="orders-stats-grid"
+                    style={showDuration ? undefined : { gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}
+                >
                     <div className="stat-card stat-orders">
                         <div className="stat-icon-wrapper">
                             <i className="fas fa-shopping-bag"></i>
@@ -523,9 +719,12 @@ const OrdersPage = () => {
                         </div>
                         <div className="stat-info">
                             <span className="stat-label">
-                                {activeCategory === 'Wallet' ? 'Total Spent' : 'Total Spent'}
+                                {activeCategory === 'Gift' ? 'Total Gift Amount'
+                                    : activeCategory === 'Puja' ? 'Total Puja Amount'
+                                    : activeCategory === 'Chadhava' ? 'Total Chadhava Amount'
+                                    : 'Total Spent'}
                             </span>
-                            <span className="stat-value">₹ {stats.totalSpent.toLocaleString('en-IN')}</span>
+                            <span className="stat-value">₹ {stats.totalSpent.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
                             <span className="stat-sub">{dateFilter}</span>
                         </div>
                     </div>
@@ -541,20 +740,19 @@ const OrdersPage = () => {
                         </div>
                     </div>
 
-                    <div className="stat-card stat-duration">
-                        <div className="stat-icon-wrapper">
-                            <i className="fas fa-clock"></i>
+                    {/* Duration only makes sense for Call / Chat / Video */}
+                    {showDuration && (
+                        <div className="stat-card stat-duration">
+                            <div className="stat-icon-wrapper">
+                                <i className="fas fa-clock"></i>
+                            </div>
+                            <div className="stat-info">
+                                <span className="stat-label">Total Duration</span>
+                                <span className="stat-value">{stats.durationString}</span>
+                                <span className="stat-sub">Across all orders</span>
+                            </div>
                         </div>
-                        <div className="stat-info">
-                            <span className="stat-label">
-                                {activeCategory === 'Wallet' ? 'Avg/Activity' : 'Total Duration'}
-                            </span>
-                            <span className="stat-value">
-                                {activeCategory === 'Wallet' || activeCategory === 'Other' || activeCategory === 'Gift' ? 'N/A' : stats.durationString}
-                            </span>
-                            <span className="stat-sub">Across all orders</span>
-                        </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* Transactions List */}
@@ -620,9 +818,9 @@ const OrdersPage = () => {
 
                                 <div className="order-right-col">
                                     <span className={`order-price ${item.price < 0 ? 'negative' : item.price > 0 ? 'positive' : ''}`}>
-                                        {item.price < 0 ? `- ₹${Math.abs(item.price)}` : item.price > 0 ? `+ ₹${item.price}` : '₹0'}
+                                        {item.price < 0 ? `- ₹${Math.abs(item.price).toFixed(2).replace(/\.00$/, '')}` : item.price > 0 ? `+ ₹${item.price.toFixed(2).replace(/\.00$/, '')}` : '₹0'}
                                     </span>
-                                    {item.status !== 'Failed' && (
+                                    {(item.status !== 'Failed' || item.bookingKind) && (
                                         <button
                                             className="order-action-btn"
                                             onClick={() => handleAction(item)}
@@ -630,7 +828,7 @@ const OrdersPage = () => {
                                             {activeCategory === 'Call' && <i className="fas fa-phone-alt"></i>}
                                             {activeCategory === 'Chat' && <i className="fas fa-comment-alt"></i>}
                                             {activeCategory === 'Gift' && <i className="fas fa-gift"></i>}
-                                            {getActionBtnLabel(activeCategory)}
+                                            {getActionBtnLabel(activeCategory, item)}
                                         </button>
                                     )}
                                     <i className="fas fa-chevron-right chevron-arrow" onClick={() => handleAction(item)}></i>

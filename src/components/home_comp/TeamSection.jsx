@@ -147,6 +147,10 @@ const AstrologerCard = ({ astro, onChat, onFollow }) => {
 	const { isBusy, isOnline } = getAstroStatus(astro);
 	const dotCls = isBusy ? 'db' : isOnline ? 'dn' : 'do';
 	const waitLabel = getWaitLabel(astro);
+	// 🔥 same boost flags the astrologer list page uses
+	const isBoosted = (value) => value === true || value === 1 || value === '1' || value === 'true';
+	const boostChat = isBoosted(astro.is_boost_chat);
+	const boostCall = isBoosted(astro.is_boost_call);
 
 	useEffect(() => {
 		setIsFollowing(isFollowed(astro));
@@ -268,10 +272,12 @@ const AstrologerCard = ({ astro, onChat, onFollow }) => {
 				) : isOnline ? (
 					<>
 						<button className="al-chat" onClick={(e) => { e.stopPropagation(); onChat(astro, 'chat'); }}>
+							{boostChat && <i className="fas fa-fire al-boost-fire" aria-label="Boosted chat" />}
 							Chat Now
 						</button>
 						<button className="al-call" onClick={(e) => { e.stopPropagation(); onChat(astro, 'call'); }} title={`Call (₹${getAstroCallPrice(astro)}/min)`}>
 							<i className="fas fa-phone" />
+							{boostCall && <i className="fas fa-fire al-boost-fire" aria-label="Boosted call" />}
 						</button>
 					</>
 				) : (

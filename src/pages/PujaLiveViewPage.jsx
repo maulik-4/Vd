@@ -31,9 +31,6 @@ const MOCK_BOOKING = {
   userDetails: { name: "Priya Sharma", gotra: "Kashyap" },
 };
 
-// How long a viewer watches before we prompt them to register.
-const REGISTER_PROMPT_DELAY_MS = 2 * 60 * 1000; // 2 minutes
-
 const PujaLiveViewPage = () => {
   const { id } = useParams();
   useSEO({
@@ -56,7 +53,6 @@ const PujaLiveViewPage = () => {
   const [msgInput, setMsgInput] = useState("");
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showRegisterPopup, setShowRegisterPopup] = useState(false);
 
   const feedRef = useRef(null);
   const heroRef = useRef(null);
@@ -106,6 +102,7 @@ const PujaLiveViewPage = () => {
 
   // ── Gentle viewer count drift (demo only — replace with a real presence
   //     count from your video/chat backend if you have one) ───────────────
+  //     Still used by the "Watching Live" figure in the stats bar below.
   useEffect(() => {
     const t = setInterval(() => {
       setViewers((v) => Math.max(90, v + Math.floor(Math.random() * 5) - 2));
@@ -122,32 +119,6 @@ const PujaLiveViewPage = () => {
     }, 45000);
     return () => clearInterval(t);
   }, []);
-
-  // ── Registration popup: fires once, 2 minutes after the viewer lands on
-  //     this page. Skipped entirely if they already have a session token
-  //     (i.e. they're a logged-in DivinIQ user) or already dismissed it once
-  //     this session. ────────────────────────────────────────────────────
-  useEffect(() => {
-    const alreadyLoggedIn = !!sessionStorage.getItem("token");
-    const alreadyDismissed = sessionStorage.getItem("plv_register_dismissed") === "true";
-    if (alreadyLoggedIn || alreadyDismissed) return;
-
-    const t = setTimeout(() => setShowRegisterPopup(true), REGISTER_PROMPT_DELAY_MS);
-    return () => clearTimeout(t);
-  }, []);
-
-  const dismissRegisterPopup = () => {
-    setShowRegisterPopup(false);
-    sessionStorage.setItem("plv_register_dismissed", "true");
-  };
-
-  const goToRegister = () => {
-    dismissRegisterPopup();
-    // TODO(diviniq): point this at however your app actually opens
-    // sign-up — e.g. the same modal Header's login button triggers —
-    // rather than a route, if registration isn't a standalone page.
-    navigate("/profile");
-  };
 
   // ── Fullscreen toggle for the live video area ─────────────────────────
   // Tries the real browser Fullscreen API first (best experience — true OS
@@ -341,18 +312,10 @@ const PujaLiveViewPage = () => {
                   <span className="plv-id-value">{booking.puja_booking_id || id}</span>
                 </div>
               </div>
-              <div className="plv-viewer-count">
-                <i className="fas fa-eye"></i> {viewers} watching
-              </div>
 
-              {/* Icon cluster: fullscreen is wired to real behaviour below.
-                  Settings/volume are visual-only controls matching the
-                  reference layout — hook them up once the real player
-                  (with quality/volume controls) replaces plv-video-scene. */}
+              {/* Icon cluster: mute (visual-only until a real player exists)
+                  and fullscreen (fully wired). */}
               <div className="plv-hero-controls">
-                <button className="plv-icon-btn" aria-label="Stream settings">
-                  <i className="fas fa-gear"></i>
-                </button>
                 <button className="plv-icon-btn" aria-label="Mute">
                   <i className="fas fa-volume-high"></i>
                 </button>
@@ -472,32 +435,6 @@ const PujaLiveViewPage = () => {
           </div>
         </div>
       </div>
-
-      {showRegisterPopup && (
-        <div className="plv-register-overlay" role="dialog" aria-modal="true">
-          <div className="plv-register-modal">
-            <button
-              className="plv-register-close"
-              onClick={dismissRegisterPopup}
-              aria-label="Close"
-            >
-              <i className="fas fa-times"></i>
-            </button>
-            <div className="plv-register-icon"><i className="fas fa-om"></i></div>
-            <h3>Never Miss a Live Darshan</h3>
-            <p>
-              Create your free DivinIQ account to save today's blessings, get notified
-              before your next puja goes live, and track every booking in one place.
-            </p>
-            <button className="plv-register-cta" onClick={goToRegister}>
-              Register Free
-            </button>
-            <button className="plv-register-later" onClick={dismissRegisterPopup}>
-              Maybe later
-            </button>
-          </div>
-        </div>
-      )}
 
       <Footer />
     </div>
