@@ -102,7 +102,7 @@ export default function RechargeCheckoutPage() {
 
       const resData = orderRes?.results || orderRes?.data || orderRes || {};
       const order_id = orderRes?.order_id || resData?.order_id || resData?.id || orderRes?.id;
-      const key = orderRes?.key || resData?.key || "rzp_live_TdTaMRFmlmWrMfrzp_live_TdTaMRFmlmWrMf";
+      const key = orderRes?.key || resData?.key || "rzp_live_TdTaMRFmlmWrMf";
       const currency = orderRes?.currency || resData?.currency || "INR";
 
       const options = {

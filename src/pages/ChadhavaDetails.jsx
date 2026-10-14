@@ -61,6 +61,15 @@ const handleImgError = (fallbackSrc) => (e) => {
   img.src = fallbackSrc;
 };
 
+const fixImgHost = (url) => {
+  if (!url) return "";
+  let clean = typeof url === "string" ? url.replace("admin.astrogurujii.com", "admin.vaidikguru.com") : url;
+  if (typeof clean === "string" && clean.startsWith("/")) {
+    clean = `https://admin.vaidikguru.com${clean}`;
+  }
+  return clean;
+};
+
 const clampStyle = (expanded) =>
   !expanded
     ? {
@@ -277,6 +286,7 @@ const ChadhavaDetails = () => {
   const [simIdx, setSimIdx] = useState(0);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
+  const [aboutExpanded, setAboutExpanded] = useState(false);
 
   const [addonQtys, setAddonQtys] = useState({});
   const [prasadQtys, setPrasadQtys] = useState({});
@@ -430,15 +440,27 @@ const ChadhavaDetails = () => {
 
   const timer = useCountdown(chadhava?.offerEndsAt);
 
+  const heroBannerImage = useMemo(() => {
+    // Second banner of the same chadhava from API (mobileImage / bannerImages[0] / webImage / chadhavaImage)
+    const b2 =
+      chadhava?.mobileImage ||
+      (Array.isArray(chadhava?.bannerImages) && chadhava.bannerImages.length > 0 ? chadhava.bannerImages[0] : null) ||
+      chadhava?.webImage ||
+      chadhava?.chadhavaImage;
+    return fixImgHost(b2) || '';
+  }, [chadhava]);
+
   const galleryImages = useMemo(() => {
     const raw = [
       chadhava?.chadhavaImage,
-      ...(chadhava?.bannerImages || []),
-      ...(chadhava?.galleryImages || []),
-      ...(chadhava?.gallery || []),
-      ...(chadhava?.images || []),
-      ...(chadhava?.photos || []),
-    ].filter(Boolean);
+      chadhava?.mobileImage,
+      chadhava?.webImage,
+      ...(Array.isArray(chadhava?.bannerImages) ? chadhava.bannerImages : []),
+      ...(Array.isArray(chadhava?.galleryImages) ? chadhava.galleryImages : []),
+      ...(Array.isArray(chadhava?.gallery) ? chadhava.gallery : []),
+      ...(Array.isArray(chadhava?.images) ? chadhava.images : []),
+      ...(Array.isArray(chadhava?.photos) ? chadhava.photos : []),
+    ].filter(Boolean).map(fixImgHost);
     return raw.length
       ? [...new Set(raw)]
       : [IMAGE_PLACEHOLDER, IMAGE_PLACEHOLDER, IMAGE_PLACEHOLDER, IMAGE_PLACEHOLDER];
@@ -831,7 +853,7 @@ return (
       <div
         className="cd-hero"
         style={{
-          backgroundImage: `url("${encodeURI(galleryImages[0])}")`,
+          backgroundImage: `url("${encodeURI(heroBannerImage || galleryImages[0])}")`,
           backgroundColor: '#f5ede0',
         }}
       >
@@ -873,12 +895,14 @@ return (
         </div>
 
         <div
+          className="cd-hero-right"
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             width: '100%',
-            minHeight: '1px',
+            height: '100%',
+            maxHeight: '430px',
           }}
         >
           <img
@@ -1075,9 +1099,29 @@ return (
       <div className="cd-about-video">
         <div className="cd-about-wrap">
           <div className="cd-about-title">{aboutTitle}</div>
-          <div className="cd-about-text" style={clampStyle(false)}>
+          <div className="cd-about-text" style={clampStyle(aboutExpanded)}>
             {aboutText}
           </div>
+          {aboutText && aboutText.length > 180 && (
+            <button
+              type="button"
+              onClick={() => setAboutExpanded((prev) => !prev)}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#7b1a3a",
+                fontWeight: 700,
+                fontSize: "12.5px",
+                padding: "0 0 10px 0",
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
+                display: "inline-block",
+              }}
+            >
+              {aboutExpanded ? "Show Less ▲" : "Read More ▼"}
+            </button>
+          )}
           <div className="cd-about-list">
             {ABOUT_ITEMS.map((item, i) => (
               <div key={i} className="cd-about-item"><i className="fas fa-om" />{item}</div>

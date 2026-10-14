@@ -9,7 +9,7 @@ const AppDownloadModal = ({ isOpen, onClose, bookingId }) => {
     // Replace with your actual store links
     const links = {
       android: "https://play.google.com/store/apps/details?id=com.app.vaidikguru",
-      ios: "https://play.google.com/store/apps/details?id=com.vaidikguru.app"
+      ios: "https://play.google.com/store/apps/details?id=com.app.vaidikguru"
     };
     window.open(links[store], "_blank");
   };

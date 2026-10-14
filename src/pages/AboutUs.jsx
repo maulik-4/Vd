@@ -552,7 +552,7 @@ const AppDownload = () => (
                 <i className="fab fa-google-play" />
                 <span className="btn-txt"><small>GET IT ON</small>Google Play</span>
               </a>
-              <a href="https://appstoreconnect.apple.com" className="ab-store-btn">
+              <a href="https://play.google.com/store/apps/details?id=com.app.vaidikguru" target="_blank" rel="noopener noreferrer" className="ab-store-btn">
                 <i className="fab fa-apple" />
                 <span className="btn-txt"><small>Download on the</small>App Store</span>
               </a>

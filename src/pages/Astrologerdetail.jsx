@@ -240,7 +240,9 @@ const AstrologerDetail = () => {
       // Wallet balance
       try {
         const w = await apiService.getBearer('/user_api/get_profile');
-        setWalletBalance(Number(w?.results?.wallet ?? w?.results_web?.wallet ?? w?.wallet ?? 0));
+        const t = w?.results ?? w?.results_web ?? w;
+        const bal = t?.wallet ?? t?.wallet_amount ?? t?.wallet_balance ?? t?.balance ?? w?.wallet ?? 0;
+        setWalletBalance(Number(bal) || 0);
       } catch (_) { setWalletBalance(0); }
     } catch (e) { console.error('[AstrologerDetail] Error loading detail:', e); }
     finally { setLoading(false); }

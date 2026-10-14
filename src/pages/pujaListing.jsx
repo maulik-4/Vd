@@ -45,6 +45,44 @@ const RadioOpt = ({ label, count, checked, onChange }) => (
   </div>
 );
 
+/* ── Expandable Text ── */
+const ExpandableText = ({ text = "", maxChars = 75 }) => {
+  const [expanded, setExpanded] = useState(false);
+  const needsTruncation = text.length > maxChars;
+  const displayed = expanded || !needsTruncation ? text : text.slice(0, maxChars);
+
+  return (
+    <span>
+      {displayed}
+      {needsTruncation && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((prev) => !prev);
+          }}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "#c0392b",
+            fontWeight: 700,
+            fontSize: "0.92em",
+            marginLeft: 5,
+            padding: 0,
+            textDecoration: "underline",
+            textUnderlineOffset: 2,
+            whiteSpace: "nowrap",
+            display: "inline",
+          }}
+        >
+          {expanded ? "Show Less" : "Read More"}
+        </button>
+      )}
+    </span>
+  );
+};
+
 /* ── Skeleton Card ── */
 const SkeletonCard = () => (
   <div className="pj-card">
@@ -134,7 +172,7 @@ const PujaCard = ({ item, index, onView }) => {
         {metaLine && (
           <div className="pj-card-purpose">
             <i className="fas fa-map-marker-alt" />
-            {metaLine}
+            <ExpandableText text={metaLine} maxChars={75} />
           </div>
         )}
       </div>
@@ -594,6 +632,16 @@ const PujaListing = () => {
     try {
       const res = await PujaService.getPujaList(null);
       let list = [];
+      const isItemValid = (item) => {
+        if (!item || typeof item !== "object") return false;
+        if (!item.title && !item.name) return false;
+        if (item.type === "App") return false;
+        if (item.isDeleted === true || item.is_deleted === 1 || item.is_deleted === true || item.deleted === true) return false;
+        if (item.status === 0 || item.status === false || item.status === "inactive" || item.status === "0") return false;
+        if (item.isActive === false || item.is_active === 0 || item.is_active === false || item.is_active === "0") return false;
+        return true;
+      };
+
       if (res?.status) {
         let raw = res.data || res.results || res.result || res.recordList || [];
         if (Array.isArray(raw)) {
@@ -601,19 +649,21 @@ const PujaListing = () => {
             if (group && Array.isArray(group.result)) return group.result;
             if (group && typeof group === 'object') return [group];
             return [];
-          }).filter(item => item && (item.title || item.name) && item.type !== 'App');
+          }).filter(isItemValid);
         }
       } else if (Array.isArray(res)) {
-        list = res.filter(item => item && (item.title || item.name) && item.type !== 'App');
+        list = res.filter(isItemValid);
       }
 
       if (list && list.length > 0) {
         setAllItems(list);
       } else {
+        setAllItems([]);
         setError(true);
       }
     } catch (e) {
       console.error("fetchItems error:", e);
+      setAllItems([]);
       setError(true);
     } finally {
       setLoading(false);
@@ -626,7 +676,10 @@ const PujaListing = () => {
 
   /* ── Filter + sort + paginate ── */
   useEffect(() => {
-    if (!allItems.length) return;
+    if (!allItems.length) {
+      setItems([]);
+      return;
+    }
 
     let list = [...allItems];
 

@@ -947,7 +947,7 @@ const AstrologerRegistration = () => {
                                             <span className="pp-app-store-btn__txt"><small>GET IT ON</small>Google Play</span>
                                         </a>
                                         <a
-                                            href="https://apps.apple.com/"
+                                            href="https://play.google.com/store/apps/details?id=com.astrologer.vaidikguru"
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="pp-app-store-btn"

@@ -389,6 +389,8 @@ const PujaDetails = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [pujaDetails, setPujaDetails] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [aboutPujaExpanded, setAboutPujaExpanded] = useState(false);
   const timer = useCountdown(pujaDetails?.pujaDatetime || pujaDetails?.pujaDate);
 
   useSEO({
@@ -457,38 +459,33 @@ const PujaDetails = () => {
     return () => clearInterval(t);
   }, [pujaGalleryImages.length]);
 
+  const isDeletedOrInactive = (item) => {
+    if (!item) return true;
+    if (item.isDeleted === true || item.is_deleted === 1 || item.is_deleted === true || item.deleted === true) return true;
+    if (item.status === 0 || item.status === false || item.status === "inactive" || item.status === "0") return true;
+    if (item.isActive === false || item.is_active === 0 || item.is_active === false || item.is_active === "0") return true;
+    return false;
+  };
+
   const fetchPujaDetails = async () => {
     try {
       setLoading(true);
+      setError(false);
       const response = await PujaService.getPujaListById(id);
       const data = response?.data || response?.result;
-      if (response?.status && data) {
+      if (response?.status && data && !isDeletedOrInactive(data)) {
         setPujaDetails({
           ...data,
           packages: Array.isArray(data.packages) && data.packages.length > 0 ? data.packages : DEFAULT_PACKAGES
         });
       } else {
-        const formattedTitle = name ? name.replace(/-/g, " ").replace(/\b\w/g, l => l.toUpperCase()) : "Sacred Puja";
-        setPujaDetails({
-          _id: id,
-          title: formattedTitle,
-          mandirName: "Kashi Vishwanath, Varanasi",
-          purposeOfPooja: "For Peace, Prosperity & Divine Blessings",
-          aboutPuja: "Participate in this sacred Vedic Puja performed by expert pandits with authentic rituals, sankalp in your name & gotra, and home delivery of divine prasad.",
-          packages: DEFAULT_PACKAGES
-        });
+        setPujaDetails(null);
+        setError(true);
       }
     } catch (error) {
-      console.log(error);
-      const formattedTitle = name ? name.replace(/-/g, " ").replace(/\b\w/g, l => l.toUpperCase()) : "Sacred Puja";
-      setPujaDetails({
-        _id: id,
-        title: formattedTitle,
-        mandirName: "Kashi Vishwanath, Varanasi",
-        purposeOfPooja: "For Peace, Prosperity & Divine Blessings",
-        aboutPuja: "Participate in this sacred Vedic Puja performed by expert pandits with authentic rituals, sankalp in your name & gotra, and home delivery of divine prasad.",
-        packages: DEFAULT_PACKAGES
-      });
+      console.log("Puja details fetch error:", error);
+      setPujaDetails(null);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -657,6 +654,39 @@ const PujaDetails = () => {
           <i className="fas fa-om" style={{ marginRight: 8, color: "#c8952a" }} />
           Loading Puja Details...
         </div>
+      </div>
+    );
+  }
+
+  if (error || !pujaDetails) {
+    return (
+      <div className="pd-page">
+        <ScrollTop />
+        <SideMenu isOpen={showSideMenu} onClose={() => setShowSideMenu(false)} />
+        <PopupSearch isOpen={showSearch} onClose={() => setShowSearch(false)} />
+        <MobileMenu
+          isOpen={showMobileMenu}
+          onClose={() => setShowMobileMenu(false)}
+        />
+        <Header
+          onMenuToggle={() => setShowMobileMenu(true)}
+          onSideMenuToggle={() => setShowSideMenu(true)}
+          onSearchToggle={() => setShowSearch(true)}
+        />
+        <div style={{ textAlign: "center", padding: "120px 20px" }}>
+          <i
+            className="fas fa-om fa-3x d-block mb-3"
+            style={{ color: "#d1d5db" }}
+          />
+          <h3 style={{ color: "#7B1F3A", fontWeight: 700 }}>Puja Not Found</h3>
+          <p style={{ color: "#666", maxWidth: 450, margin: "10px auto 20px" }}>
+            This puja is currently unavailable or has been removed.
+          </p>
+          <Link to="/puja" className="th-btn rounded-pill d-inline-block" style={{ padding: "12px 28px" }}>
+            Browse All Pujas
+          </Link>
+        </div>
+        <Footer />
       </div>
     );
   }
@@ -926,15 +956,42 @@ const PujaDetails = () => {
 
           <p
             className="pd-hero-desc"
-            style={{
-              display: "-webkit-box",
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
+            style={
+              !aboutPujaExpanded
+                ? {
+                    display: "-webkit-box",
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                    marginBottom: 6,
+                  }
+                : { marginBottom: 6 }
+            }
           >
             {pujaDetails?.aboutPuja}
           </p>
+          {pujaDetails?.aboutPuja && pujaDetails.aboutPuja.length > 140 && (
+            <button
+              type="button"
+              onClick={() => setAboutPujaExpanded((prev) => !prev)}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#f5d88a",
+                fontWeight: 600,
+                fontSize: "12.5px",
+                padding: 0,
+                marginBottom: 14,
+                textDecoration: "underline",
+                textUnderlineOffset: 2,
+                display: "inline-block",
+                textAlign: "left",
+              }}
+            >
+              {aboutPujaExpanded ? "Show Less ▲" : "Read More ▼"}
+            </button>
+          )}
 
           <div className="pd-hero-tags">
             <span className="pd-hero-tag">

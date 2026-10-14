@@ -322,6 +322,12 @@ const ChadhavaCartPage = () => {
 		const nameToUse = userDetails?.name || contextDevoteeDetails?.name || 'Devotee';
 		const whatsappToUse = userDetails?.whatsapp || contextDevoteeDetails?.whatsapp || '';
 		const activeId = cartResponse?.chadhava_id?._id || location.state?.chadhavaId || contextActiveChadhavaId;
+
+		if (paymentMode === 'wallet' && walletBalance < totalAmount) {
+			alert(`Insufficient wallet balance!\nYour wallet balance is ₹${walletBalance}, but total payable is ₹${totalAmount}.\n\nPlease select Online Payment (UPI / Card) or recharge your wallet.`);
+			return;
+		}
+
 		try {
 			const payload = {
 				chadhava_id: activeId,
@@ -338,7 +344,7 @@ const ChadhavaCartPage = () => {
 				'/puja/createChadhavaBooking',
 				payload
 			);
-			const isSuccess = res?.status === true || res?.status === "success" || res?.status === 200 || res?.success === true || !!res?.orderId || !!res?.order_id;
+			const isSuccess = res?.status === true || res?.status === "success" || res?.status === 200 || res?.success === true || !!res?.orderId || !!res?.order_id || !!res?.booking?._id || !!res?.results?._id;
 			if (isSuccess) {
 				if (paymentMode === 'razorpay') {
 					const razorpayLoaded = await loadRazorpay();
@@ -350,7 +356,7 @@ const ChadhavaCartPage = () => {
 					let isPaymentDone = false;
 					const redirectTarget = window.location.origin + '/my_chadhava_booking';
 					const options = {
-						key: "rzp_live_TdTaMRFmlmWrMfrzp_live_TdTaMRFmlmWrMf",
+						key: res?.key || res?.results?.key || "rzp_live_TdTaMRFmlmWrMf",
 						amount: res.amount,
 						currency: "INR",
 						name: "vaidikguru",

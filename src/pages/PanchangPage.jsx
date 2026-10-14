@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Sun, Moon, Calendar, ChevronLeft, ChevronRight, MapPin, Clock,
-  AlertTriangle, Compass, Sparkles, Flower2, Crown, Star, Wind, Sunrise, ArrowUp, ChevronDown
+  AlertTriangle, Compass, Sparkles, Flower2, Crown, Star, Wind, Sunrise, ChevronDown
 } from "lucide-react";
 
 import Header from "../components/layout/Header";
@@ -9,6 +9,7 @@ import Footer from "../components/layout/Footer";
 import MobileMenu from "../components/layout/MobileMenu";
 import PopupSearch from "../components/layout/PopupSearch";
 import SideMenu from "../components/layout/SideMenu";
+import ScrollTop from "../components/common/ScrollTop";
 import { useSEO } from "../hooks/seoHook";
 import { SEO } from "../config/seoConfig";
 
@@ -1304,14 +1305,8 @@ export default function PanchangPage() {
       {/* Global Footer */}
       <Footer />
 
-      {/* Back to top scroll button */}
-      <a
-        href="#top"
-        className="fixed bottom-6 right-6 w-11 h-11 rounded-full flex items-center justify-center z-50 shadow-lg bg-orange-600 hover:bg-orange-700 transition-transform active:scale-95"
-        aria-label="Back to top"
-      >
-        <ArrowUp size={18} color="#fff" />
-      </a>
+      {/* Global Scroll-to-Top Button */}
+      <ScrollTop />
     </div>
   );
 }

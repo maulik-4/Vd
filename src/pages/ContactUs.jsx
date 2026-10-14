@@ -266,7 +266,7 @@ export default function DiviniQContactPage() {
                                     <strong>Google Play</strong>
                                 </a>
 
-                                <a href="https://appstoreconnect.apple.com"
+                                <a href="https://play.google.com/store/apps/details?id=com.app.vaidikguru"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="pp-app-badge"

@@ -31,13 +31,13 @@ export default function RateConsultationModal({ onClose, onSkip, onSubmit }) {
 
   const activeRating = hoverRating || rating;
 
-const toggleTag = (tag) => {
-  setTags((prev) =>
-    prev.includes(tag)
-      ? prev.filter((t) => t !== tag)
-      : [...prev, tag]
-  );
-};
+  const toggleTag = (tag) => {
+    setTags((prev) =>
+      prev.includes(tag)
+        ? prev.filter((t) => t !== tag)
+        : [...prev, tag]
+    );
+  };
 
   return (
     <div className="modal-overlay">
@@ -107,37 +107,11 @@ const toggleTag = (tag) => {
             className="review-textarea"
             placeholder="Share your experience..."
             maxLength={300}
-            value={
-              tags.length > 0
-                ? `${tags.join(', ')}${review ? ` - ${review}` : ''}`
-                : review
-            }
-            onChange={(e) => {
-              const value = e.target.value;
-
-              const tagText = tags.join(', ');
-
-              if (tagText && value.startsWith(tagText)) {
-                const userReview = value
-                  .slice(tagText.length)
-                  .replace(/^\s*-\s*/, '');
-
-                setReview(userReview);
-              } else if (!tagText) {
-                setReview(value);
-              }
-              console.log(review);
-            }}
+            value={review}
+            onChange={(e) => setReview(e.target.value)}
             style={{ resize: 'none' }}
           />
-
-          <span className="char-count">
-            {(
-              tags.length > 0
-                ? `${tags.join(', ')}${review ? ` - ${review}` : ''}`
-                : review
-            ).length}/300
-          </span>
+          <span className="char-count">{review.length}/300</span>
         </div>
 
         <div className="tag-row">
@@ -183,20 +157,20 @@ const toggleTag = (tag) => {
           <button
             className="btn btn--primary"
             onClick={() => {
-  const finalReview = tags.length > 0
-    ? `${tags.join(', ')}${review ? ` - ${review}` : ''}`
-    : review;
+              const finalReview = tags.length > 0
+                ? `${tags.join(', ')}${review ? ` - ${review}` : ''}`
+                : review;
 
-  console.log('Final Review:', finalReview);
+              console.log('Final Review:', finalReview);
 
-  onSubmit?.({
-    rating,
-    category,
-    review: finalReview,
-    tags,
-    anonymous,
-  });
-}}
+              onSubmit?.({
+                rating,
+                category,
+                review: finalReview,
+                tags,
+                anonymous,
+              });
+            }}
             style={{
               flex: 1.15,
               padding: '13px 18px',

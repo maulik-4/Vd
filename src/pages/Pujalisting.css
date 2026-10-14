@@ -250,8 +250,7 @@
 .pj-card-name { font-size: 14px; font-weight: 800; color: #111827; margin-bottom: 5px; line-height: 1.35; transition: color .2s; }
 .pj-card-purpose {
   font-size: 11px; color: #c0392b; font-weight: 600; margin-bottom: 6px;
-  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
-  overflow: hidden;
+  word-break: break-word;
 }
 .pj-card-purpose i { font-size: 10px; margin-right: 5px; }
 .pj-card-loc  { font-size: 11px; color: #888; margin-bottom: 7px; display: flex; align-items: center; gap: 4px; }

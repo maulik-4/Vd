@@ -41,6 +41,44 @@ const RadioOpt = ({ label, count, checked, onChange }) => (
   </div>
 );
 
+/* ── Expandable Text ── */
+const ExpandableText = ({ text = "", maxChars = 80 }) => {
+  const [expanded, setExpanded] = useState(false);
+  const needsTruncation = text.length > maxChars;
+  const displayed = expanded || !needsTruncation ? text : text.slice(0, maxChars);
+
+  return (
+    <span>
+      {displayed}
+      {needsTruncation && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((prev) => !prev);
+          }}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "#c0392b",
+            fontWeight: 700,
+            fontSize: "0.92em",
+            marginLeft: 5,
+            padding: 0,
+            textDecoration: "underline",
+            textUnderlineOffset: 2,
+            whiteSpace: "nowrap",
+            display: "inline",
+          }}
+        >
+          {expanded ? "Show Less" : "Read More"}
+        </button>
+      )}
+    </span>
+  );
+};
+
 /* ── Skeleton Card ── */
 const SkeletonCard = () => (
   <div className="ch-card">
@@ -114,7 +152,7 @@ const ChadhavaCard = ({ item, index, onView }) => {
           </div>
         )}
         <div className="ch-card-desc">
-          {item.description || item.short_description || 'Experience divine blessings through this sacred offering.'}
+          <ExpandableText text={item.description || item.short_description || 'Experience divine blessings through this sacred offering.'} maxChars={80} />
         </div>
       </div>
 
@@ -596,7 +634,6 @@ const ChadhavaListing = () => {
         <div className="container">
           <div className="ch-hero">
             <img src="/assets/img/bg/chadawa.webp" alt="Explore Holy Chadavas - Sacred Offerings" className="ch-hero-img" />
-
           </div>
 
 

@@ -36,7 +36,7 @@ const NewAppDownloadModal = ({ isOpen, onClose, title, subtitle, logo = "assets/
                             </div>
 
                             <div className="d-flex justify-content-center gap-3">
-                                <a href="https://play.google.com/store/apps/details?id=com.diviniq.app" target="_blank" rel="noreferrer" className="app-btn-elite bg-transparent border rounded p-2 d-flex align-items-center gap-2 text-decoration-none text-dark">
+                                <a href="https://play.google.com/store/apps/details?id=com.app.vaidikguru" target="_blank" rel="noreferrer" className="app-btn-elite bg-transparent border rounded p-2 d-flex align-items-center gap-2 text-decoration-none text-dark">
                                     <i className="fab fa-apple fs-4"></i> 
                                     <div className="text-start">
                                         <small className="d-block opacity-50" style={{fontSize: '9px'}}>Available on</small>

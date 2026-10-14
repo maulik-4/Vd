@@ -37,6 +37,16 @@ const handleImgError = (e) => {
 	img.src = PLACEHOLDER;
 };
 
+const isItemValid = (item) => {
+	if (!item || typeof item !== 'object') return false;
+	if (!item.title && !item.name) return false;
+	if (item.type === 'App') return false;
+	if (item.isDeleted === true || item.is_deleted === 1 || item.is_deleted === true || item.deleted === true) return false;
+	if (item.status === 0 || item.status === false || item.status === 'inactive' || item.status === '0') return false;
+	if (item.isActive === false || item.is_active === 0 || item.is_active === false || item.is_active === '0') return false;
+	return true;
+};
+
 const extractPujaItems = (source) => {
 	if (!source) return [];
 	let rawList = [];
@@ -56,8 +66,8 @@ const extractPujaItems = (source) => {
 	const flattened = [];
 	rawList.forEach((item) => {
 		if (item && Array.isArray(item.result)) {
-			flattened.push(...item.result);
-		} else if (item && (item.pujaImage || item.aboutPuja || item.mandirName || item.purposeOfPooja || item.pujaDatetime)) {
+			flattened.push(...item.result.filter(isItemValid));
+		} else if (item && isItemValid(item)) {
 			flattened.push(item);
 		}
 	});

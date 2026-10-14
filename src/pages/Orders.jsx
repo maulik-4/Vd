@@ -65,12 +65,60 @@ const extractList = (res, extraKeys = []) => {
     return findArr(res, 0) || [];
 };
 
+/* ── Wallet credit detection ──
+   Detects both Admin credits and Razorpay recharges regardless of format variations. */
+const RECHARGE_KEYWORDS = [
+    'admin', 'bank', 'recharge', 'wallet', 'topup', 'top_up', 'razorpay', 
+    'online', 'payment', 'upi', 'card', 'netbanking', 'credit', 'add_money', 
+    'deposit', 'cashback', 'bonus', 'refund', 'user_recharge', 'razorpay_recharge', 
+    'razor_pay', 'razorpay_payment', 'online_recharge', 'gateway', 'pg', 'self', 
+    'user', 'added', 'pay_in', 'payin', 'rzp'
+];
+
+const isWalletCredit = (t) => {
+    if (!t || typeof t !== 'object') return false;
+
+    const amountType = String(
+        t.amount_type || t.transaction_type || t.type_amount || t.payment_type || t.tx_type || ''
+    ).toLowerCase().trim();
+
+    const type = String(
+        t.type || t.category || t.payment_mode || t.payment_method || t.mode || t.trx_type || t.wallet_type || t.source || t.call_type || ''
+    ).toLowerCase().trim();
+
+    const desc = String(
+        t.description || t.title || t.message || t.remark || t.note || t.details || ''
+    ).toLowerCase().trim();
+
+    // Check if explicitly debit without any razorpay/recharge indicators
+    const isExplicitDebit = ['debit', 'dr', 'minus', 'deduction', 'spent', 'withdraw'].includes(amountType) &&
+        !type.includes('razorpay') && !desc.includes('razorpay') && !t.razorpay_payment_id && !t.razorpay_order_id;
+
+    if (isExplicitDebit) return false;
+
+    const isCreditAmountType = ['credit', 'cr', 'add', 'plus', 'addition', 'topup', 'recharge'].includes(amountType);
+    const isRechargeType = RECHARGE_KEYWORDS.some(kw => type.includes(kw));
+    const hasRazorpayId = !!(
+        t.razorpay_payment_id || 
+        t.payment_id || 
+        t.razorpay_order_id || 
+        t.payment_id_rzp || 
+        t.rzp_payment_id || 
+        t.razorpay_id ||
+        (t.order_id && String(t.order_id).toLowerCase().includes('rzp'))
+    );
+    const matchesDesc = /recharge|top ?up|add(ed)? money|razorpay|wallet (credit|topup|load)|money added|cashback|refund|credit|payment receive|online/i.test(desc);
+    const isRechargeApi = t.is_recharge_api === true;
+
+    return isCreditAmountType || isRechargeType || hasRazorpayId || matchesDesc || isRechargeApi;
+};
+
+
+
 // Try the preferred method, then the other one. Stop as soon as the server
 // answers successfully (even with an empty list) so we don't fire extra
 // failing requests. Every failure is logged with its HTTP status so the
 // real cause is visible in the console.
-// (apiService already uses baseURL https://admin.vaidikguru.com, so there
-// is no need for a separate absolute-URL retry.)
 const fetchWithFallback = async (path, { method = 'post', extraKeys = [] } = {}) => {
     const other = method === 'post' ? 'get' : 'post';
     const statuses = [];
@@ -123,9 +171,13 @@ const mapApiTransaction = (t) => {
         String(t.transaction_type || '').toLowerCase().includes('gift') ||
         !!(t.gift_id || t.giftId || t.gift_title || t.gift_name);
 
+    const walletCredit = !isGift && (t.is_recharge_api || isWalletCredit(t));
+
     let category;
     if (isGift) {
         category = 'Gift';
+    } else if (walletCredit) {
+        category = 'Wallet';
     } else if (rawType.includes('video') || desc.includes('video')) {
         category = 'Video';
     } else if (rawType.includes('chat') || desc.includes('chat')) {
@@ -161,22 +213,35 @@ const mapApiTransaction = (t) => {
     else if (category === 'Gift') typeLabel = `${giftName ? `Gift: ${giftName}` : (t.description || 'Gift Sent to Astrologer')} • Paid from Wallet`;
     else if (category === 'Puja') typeLabel = t.puja_name || t.description || 'Puja Booking';
     else if (category === 'Chadhava') typeLabel = t.description || 'Chadhava Offering';
-    else typeLabel = t.description || t.type || 'Wallet Transaction';
+    else {
+        const via = String(t.payment_mode || t.payment_method || t.type || '').toLowerCase();
+        const viaLabel = (via === 'admin' || t.by === 'admin' || rawType === 'admin') ? 'By VaidikGuru'
+            : (via.includes('razorpay') || via === 'online' || via === 'upi' || via === 'card' || via === 'payment' || t.razorpay_payment_id || t.razorpay_order_id || desc.includes('razorpay')) ? 'Razorpay'
+            : via ? via.charAt(0).toUpperCase() + via.slice(1) : '';
+        typeLabel = walletCredit
+            ? `Money Added${viaLabel ? ` • ${viaLabel}` : ''}`
+            : (t.description || t.type || 'Wallet Deduction');
+    }
 
-    const amount = Number(t.amount || t.price || t.total_amount) || 0;
-    const price = amountType === 'credit' ? amount : -amount;
+    const amount = Number(t.amount || t.price || t.total_amount || t.recharge_amount) || 0;
+    const price = (amountType === 'credit' || walletCredit) ? Math.abs(amount) : -Math.abs(amount);
 
     const daysAgo = Math.floor((Date.now() - validDate.getTime()) / (1000 * 60 * 60 * 24));
 
     const titleName = (astroName || t.puja_name || '').trim() ||
-        (category === 'Wallet' ? (t.description || 'Wallet Recharge') :
+        (category === 'Wallet' ? (walletCredit
+            ? ((String(t.type || t.payment_mode || '').toLowerCase() === 'admin' || t.by === 'admin') ? 'Added by VaidikGuru'
+                : /refund/i.test(String(t.description || t.type || '')) ? 'Refund to Wallet'
+                : /cashback|bonus/i.test(String(t.description || t.type || '')) ? 'Cashback / Bonus'
+                : 'Wallet Recharge • Razorpay')
+            : (t.description || 'Wallet Deduction')) :
          category === 'Gift' ? (giftName ? `Gift: ${giftName}` : (astroName ? `Gift to ${astroName}` : 'Gift to Astrologer')) :
          category === 'Puja' ? (t.description || 'Puja Booking') :
          category === 'Chadhava' ? (t.description || 'Chadhava Offering') : 'VaidikGuru Service');
 
     return {
-        uid: t.id || t.order_id || t.transaction_id || Math.random().toString(),
-        id: t.order_id || t.id || t.transaction_id || 'N/A',
+        uid: t.id || t._id || t.order_id || t.transaction_id || t.razorpay_payment_id || Math.random().toString(),
+        id: t.order_id || t.razorpay_order_id || t.id || t._id || t.transaction_id || t.razorpay_payment_id || 'N/A',
         name: titleName,
         verified: category !== 'Wallet',
         duration,
@@ -185,7 +250,13 @@ const mapApiTransaction = (t) => {
         time: formatTimeString(validDate),
         dateObj: validDate,
         daysAgo,
-        status: t.status ? (String(t.status).charAt(0).toUpperCase() + String(t.status).slice(1)) : 'Completed',
+        status: (() => {
+            const st = String(t.status ?? t.payment_status ?? '').toLowerCase();
+            if (!st || ['success', 'paid', 'captured', 'completed', 'complete', '1', 'true'].includes(st)) return 'Completed';
+            if (['failed', 'failure', '0', 'false', 'cancelled'].includes(st)) return 'Failed';
+            if (['pending', 'created', 'initiated'].includes(st)) return 'Processing';
+            return st.charAt(0).toUpperCase() + st.slice(1);
+        })(),
         price,
         category,
         durationSec
@@ -273,6 +344,7 @@ const OrdersPage = () => {
     const [txList, setTxList] = useState([]);         // /user_api/transaction
     const [giftApiList, setGiftApiList] = useState([]); // /user_api/gift_transaction
     const [bookingRows, setBookingRows] = useState([]); // puja + chadhava
+    const [rechargeRows, setRechargeRows] = useState([]); // extra recharge-history APIs (if the backend has them)
     const [walletBalance, setWalletBalance] = useState(null); // from /user_api/get_profile
 
     const fetchTransactions = () => {
@@ -328,12 +400,14 @@ const OrdersPage = () => {
                     err?.response?.status ?? 'network/CORS', err?.response?.data || err?.message);
             });
 
+        // 5) Razorpay recharge history comes directly from /user_api/transaction
+        setRechargeRows([]);
+
         // 4) Current wallet balance (shown on the Wallet / Gift / Puja / Chadhava tabs)
         apiService.getBearer('/user_api/get_profile')
             .then((res) => {
-                const r = res?.results || res?.data || {};
-                const raw = r.wallet ?? r.wallet_amount ?? r.wallet_balance ?? r.balance
-                    ?? res?.results_web?.wallet ?? res?.wallet ?? null;
+                const pick = (o) => o && (o.wallet ?? o.wallet_amount ?? o.wallet_balance ?? o.balance);
+                const raw = pick(res?.results_web) ?? pick(res?.results) ?? pick(res?.data) ?? res?.wallet ?? null;
                 const n = Number(raw);
                 if (raw !== null && !Number.isNaN(n)) setWalletBalance(n);
             })
@@ -351,7 +425,15 @@ const OrdersPage = () => {
 
     // Combine all sources whenever any of them changes.
     useEffect(() => {
-        let mapped = mergeGiftTransactions([...txList, ...giftApiList]).map(mapApiTransaction);
+        // Merge extra recharge rows, skipping ones already in /user_api/transaction
+        const seen = new Set(txList.map((t) => String(t.razorpay_payment_id || t.payment_id || t.order_id || t.id || '')).filter(Boolean));
+        const extraRecharges = rechargeRows.filter((r) => {
+            const key = String(r.razorpay_payment_id || r.payment_id || r.order_id || r.id || r._id || '');
+            if (key && seen.has(key)) return false;
+            if (key) seen.add(key);
+            return true;
+        });
+        let mapped = mergeGiftTransactions([...txList, ...extraRecharges, ...giftApiList]).map(mapApiTransaction);
         // Booking APIs are the source of truth for Puja / Chadhava — drop the
         // wallet-debit copies of the same booking so nothing shows twice.
         if (bookingRows.some(r => r.category === 'Puja')) {
@@ -361,13 +443,13 @@ const OrdersPage = () => {
             mapped = mapped.filter(item => item.category !== 'Chadhava');
         }
         setApiTransactions([...mapped, ...bookingRows].sort((a, b) => b.dateObj - a.dateObj));
-    }, [txList, giftApiList, bookingRows]);
+    }, [txList, giftApiList, bookingRows, rechargeRows]);
 
     // If the current tab is empty once data arrives, jump to the first tab that has data.
     useEffect(() => {
         if (apiTransactions.length === 0) return;
         if (apiTransactions.some(item => item.category === activeCategory)) return;
-        const firstWithData = ['Call', 'Chat', 'Video', 'Puja', 'Chadhava', 'Gift'].find(catKey =>
+        const firstWithData = ['Call', 'Chat', 'Video', 'Puja', 'Chadhava', 'Gift', 'Wallet'].find(catKey =>
             apiTransactions.some(item => item.category === catKey)
         );
         if (firstWithData) setActiveCategory(firstWithData);
@@ -424,7 +506,8 @@ const OrdersPage = () => {
         { key: 'Video', label: 'Video', icon: 'fas fa-video' },
         { key: 'Puja', label: 'Puja', icon: 'fas fa-om' },
         { key: 'Chadhava', label: 'Chadhava', icon: 'fas fa-hands' },
-        { key: 'Gift', label: 'Gift', icon: 'fas fa-gift' }
+        { key: 'Gift', label: 'Gift', icon: 'fas fa-gift' },
+        { key: 'Wallet', label: 'Wallet', icon: 'fas fa-wallet' }
     ];
 
     // Filter transaction logic
@@ -457,6 +540,8 @@ const OrdersPage = () => {
             return sum;
         }, 0);
 
+        const totalAdded = filteredList.reduce((sum, item) => (item.price > 0 ? sum + item.price : sum), 0);
+
         const completedCount = filteredList.filter(item => item.status === 'Completed' || item.status === 'Confirmed').length;
         const completionRate = totalOrders > 0 ? Math.round((completedCount / totalOrders) * 100) : 0;
 
@@ -470,6 +555,7 @@ const OrdersPage = () => {
         return {
             totalOrders,
             totalSpent,
+            totalAdded,
             completedCount,
             completionRate,
             durationString
@@ -483,6 +569,19 @@ const OrdersPage = () => {
     const totalPages = Math.ceil(filteredList.length / itemsPerPage) || 1;
     const startIndex = (currentPage - 1) * itemsPerPage;
     const paginatedItems = filteredList.slice(startIndex, startIndex + itemsPerPage);
+
+    // Show at most 5 page numbers (+ first/last with dots) so the bar never overflows on phones
+    const pageNumbers = (() => {
+        if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
+        const start = Math.max(2, currentPage - 1);
+        const end = Math.min(totalPages - 1, currentPage + 1);
+        const pages = [1];
+        if (start > 2) pages.push('…');
+        for (let p = start; p <= end; p++) pages.push(p);
+        if (end < totalPages - 1) pages.push('…');
+        pages.push(totalPages);
+        return pages;
+    })();
 
     // Call/Chat again handler
     const handleAction = (item) => {
@@ -568,24 +667,9 @@ const OrdersPage = () => {
 
             {/* Toast Notification Simulation */}
             {notification && (
-                <div style={{
-                    position: 'fixed',
-                    bottom: '30px',
-                    right: '30px',
-                    zIndex: 9999,
-                    backgroundColor: '#7a0c0c',
-                    color: '#ffffff',
-                    padding: '16px 24px',
-                    borderRadius: '12px',
-                    boxShadow: '0 10px 30px rgba(122, 12, 12, 0.3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    animation: 'slideUp 0.3s ease-out',
-                    border: '1px solid #f9ebe3'
-                }}>
+                <div className="orders-toast">
                     <i className="fas fa-spinner fa-spin" style={{ color: '#fff' }}></i>
-                    <span style={{ fontWeight: '500', fontSize: '14px' }}>{notification.message}</span>
+                    <span>{notification.message}</span>
                 </div>
             )}
 
@@ -606,38 +690,19 @@ const OrdersPage = () => {
 
                     {/* Wallet balance — shown in the header, in front of the banner image */}
                     <div
+                        className="orders-wallet-card"
                         onClick={() => navigate('/recharge-now')}
                         title="Recharge wallet"
-                        style={{
-                            position: 'relative',
-                            zIndex: 2,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '14px',
-                            background: '#ffffff',
-                            border: '1px solid #f3dcd0',
-                            borderRadius: '16px',
-                            padding: '14px 20px',
-                            boxShadow: '0 8px 24px rgba(122, 12, 12, 0.08)',
-                            cursor: 'pointer',
-                            marginLeft: 'auto',
-                            marginRight: '24px',
-                            flexShrink: 0,
-                        }}
                     >
-                        <div style={{
-                            width: '46px', height: '46px', borderRadius: '50%',
-                            background: '#fdecea', color: '#7a0c0c',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px',
-                        }}>
+                        <div className="orders-wallet-icon">
                             <i className="fas fa-wallet"></i>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                            <span style={{ fontSize: '13px', color: '#777' }}>Wallet Balance</span>
-                            <span style={{ fontSize: '22px', fontWeight: 700, color: '#2b2b2b' }}>
+                        <div className="orders-wallet-info">
+                            <span className="orders-wallet-label">Wallet Balance</span>
+                            <span className="orders-wallet-amount">
                                 {walletBalance === null ? '—' : `₹ ${walletBalance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
                             </span>
-                            <span style={{ fontSize: '12px', color: '#7a0c0c', fontWeight: 600 }}>
+                            <span className="orders-wallet-link">
                                 <i className="fas fa-plus-circle"></i> Recharge
                             </span>
                         </div>
@@ -666,7 +731,7 @@ const OrdersPage = () => {
                         ))}
                     </div>
 
-                    <div className="orders-date-selector" ref={dropdownRef}>
+                    <div className={`orders-date-selector${isDropdownOpen ? ' open' : ''}`} ref={dropdownRef}>
                         <button
                             className="date-dropdown-btn"
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -696,10 +761,7 @@ const OrdersPage = () => {
                 </div>
 
                 {/* Stats Grid */}
-                <div
-                    className="orders-stats-grid"
-                    style={showDuration ? undefined : { gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}
-                >
+                <div className={`orders-stats-grid${showDuration ? '' : ' three-cols'}`}>
                     <div className="stat-card stat-orders">
                         <div className="stat-icon-wrapper">
                             <i className="fas fa-shopping-bag"></i>
@@ -722,9 +784,10 @@ const OrdersPage = () => {
                                 {activeCategory === 'Gift' ? 'Total Gift Amount'
                                     : activeCategory === 'Puja' ? 'Total Puja Amount'
                                     : activeCategory === 'Chadhava' ? 'Total Chadhava Amount'
+                                    : activeCategory === 'Wallet' ? 'Total Added'
                                     : 'Total Spent'}
                             </span>
-                            <span className="stat-value">₹ {stats.totalSpent.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                            <span className="stat-value">₹ {(activeCategory === 'Wallet' ? stats.totalAdded : stats.totalSpent).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
                             <span className="stat-sub">{dateFilter}</span>
                         </div>
                     </div>
@@ -771,8 +834,8 @@ const OrdersPage = () => {
                         </div>
                     ) : paginatedItems.length === 0 ? (
                         <div className="orders-empty-state">
-                            <i className="fas fa-receipt"></i>
-                            <h3>No orders yet</h3>
+                            <i className={activeCategory === 'Wallet' ? 'fas fa-wallet' : 'fas fa-receipt'}></i>
+                            <h3>{activeCategory === 'Wallet' ? 'No wallet history yet' : 'No orders yet'}</h3>
                             <p>Try changing the date filter or category.</p>
                         </div>
                     ) : (
@@ -784,7 +847,7 @@ const OrdersPage = () => {
                                     </div>
                                     <div className="order-details">
                                         <div className="order-meta">
-                                            <span>Order ID: #{item.id}</span>
+                                            <span>{activeCategory === 'Wallet' ? 'Txn ID' : 'Order ID'}: #{item.id}</span>
                                             {item.duration && item.duration !== '-' && (
                                                 <>
                                                     <span>•</span>
@@ -828,6 +891,7 @@ const OrdersPage = () => {
                                             {activeCategory === 'Call' && <i className="fas fa-phone-alt"></i>}
                                             {activeCategory === 'Chat' && <i className="fas fa-comment-alt"></i>}
                                             {activeCategory === 'Gift' && <i className="fas fa-gift"></i>}
+                                            {activeCategory === 'Wallet' && <i className="fas fa-plus-circle"></i>}
                                             {getActionBtnLabel(activeCategory, item)}
                                         </button>
                                     )}
@@ -842,7 +906,7 @@ const OrdersPage = () => {
                 {filteredList.length > 0 && (
                     <div className="orders-pagination-bar">
                         <div className="pagination-info">
-                            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredList.length)} of {filteredList.length} orders
+                            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredList.length)} of {filteredList.length} {activeCategory === 'Wallet' ? 'transactions' : 'orders'}
                         </div>
                         <div className="pagination-controls">
                             <button
@@ -853,14 +917,18 @@ const OrdersPage = () => {
                                 <i className="fas fa-chevron-left"></i>
                             </button>
 
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                                <button
-                                    key={page}
-                                    className={`page-btn ${currentPage === page ? 'active' : ''}`}
-                                    onClick={() => setCurrentPage(page)}
-                                >
-                                    {page}
-                                </button>
+                            {pageNumbers.map((page, idx) => (
+                                page === '…' ? (
+                                    <span key={`dots-${idx}`} className="page-dots">…</span>
+                                ) : (
+                                    <button
+                                        key={page}
+                                        className={`page-btn ${currentPage === page ? 'active' : ''}`}
+                                        onClick={() => setCurrentPage(page)}
+                                    >
+                                        {page}
+                                    </button>
+                                )
                             ))}
 
                             <button
@@ -881,3 +949,12 @@ const OrdersPage = () => {
 };
 
 export default OrdersPage;
+
+
+
+
+
+
+
+
+

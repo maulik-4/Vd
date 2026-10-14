@@ -433,9 +433,15 @@ const OrderConfirmationModal = ({ isOpen, onClose, formData, cart, onConfirm, wa
                 <div>
                   <div className="ocm-pay-name">
                     VaidikGuru Wallet
-                    <span className="ocm-wallet-bal">₹{walletBalance}</span>
+                    <span className="ocm-wallet-bal" style={{ color: walletBalance < totalAmount ? "#ef4444" : "#f5a623" }}>
+                      ₹{walletBalance} {walletBalance < totalAmount ? "(Low Balance)" : ""}
+                    </span>
                   </div>
-                  <div className="ocm-pay-sub">Use your VaidikGuru wallet balance</div>
+                  <div className="ocm-pay-sub">
+                    {walletBalance < totalAmount
+                      ? "Insufficient balance for this booking"
+                      : "Use your VaidikGuru wallet balance"}
+                  </div>
                 </div>
               </div>
             </div>
@@ -455,7 +461,16 @@ const OrderConfirmationModal = ({ isOpen, onClose, formData, cart, onConfirm, wa
                 <i className="fas fa-pen" style={{fontSize:11}} />
                 Edit Info
               </button>
-              <button className="ocm-btn-pay" onClick={() => onConfirm(paymentMode)}>
+              <button
+                className="ocm-btn-pay"
+                onClick={() => {
+                  if (paymentMode === "wallet" && walletBalance < totalAmount) {
+                    alert(`Insufficient wallet balance!\nYour wallet balance is ₹${walletBalance}, but the total payable amount is ₹${totalAmount}.\n\nPlease select Online Payment (UPI / Card) or recharge your wallet.`);
+                    return;
+                  }
+                  onConfirm(paymentMode);
+                }}
+              >
                 <i className="fas fa-lock" style={{fontSize:12}} />
                 Submit & Pay
               </button>

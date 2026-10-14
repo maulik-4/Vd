@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 
 import apiService from "../../services/apiServices";
+import storageService from "../../services/storageServices";
 import { mergeGiftTransactions } from "../../services/giftService";
 import { useStorage } from "../../context/StorageContext";
 import Header from "../layout/Header";
@@ -47,33 +48,120 @@ function TransactionItem({ data }) {
     );
 }
 
-const mapWalletTransaction = (t) => {
-    const amountType = (t.amount_type || '').toLowerCase();
-    const rawType = (t.type || t.category || '').toLowerCase();
-    const desc = (t.description || '').trim();
-    const astroName = (t.astro_name || '').trim();
-    const pujaName = (t.puja_name || '').trim();
+// Extract list from various API response shapes
+const extractList = (res, extraKeys = []) => {
+    if (!res) return [];
+    if (Array.isArray(res)) return res;
+    const keys = [
+        ...extraKeys,
+        'results_web', 'results', 'data', 'result', 'record', 'records',
+        'bookings', 'list', 'transactions', 'history', 'recharges', 'payments',
+        'wallet_history', 'recharge_history'
+    ];
+    for (const k of keys) {
+        const v = res[k];
+        if (Array.isArray(v)) return v;
+        if (v && Array.isArray(v.data)) return v.data;
+    }
+    const findArr = (obj, depth) => {
+        if (!obj || typeof obj !== 'object' || depth > 2) return null;
+        for (const v of Object.values(obj)) {
+            if (Array.isArray(v) && v.length && typeof v[0] === 'object') return v;
+        }
+        for (const v of Object.values(obj)) {
+            const found = !Array.isArray(v) && findArr(v, depth + 1);
+            if (found) return found;
+        }
+        return null;
+    };
+    return findArr(res, 0) || [];
+};
 
-    const isCredit = amountType === 'credit' || rawType === 'admin' || rawType === 'bank' || desc.toLowerCase().includes('recharge') || desc.toLowerCase().includes('credit');
+/* ── Wallet credit detection ──
+   Detects both Admin credits and Razorpay recharges regardless of format variations. */
+const RECHARGE_KEYWORDS = [
+    'admin', 'bank', 'recharge', 'wallet', 'topup', 'top_up', 'razorpay', 
+    'online', 'payment', 'upi', 'card', 'netbanking', 'credit', 'add_money', 
+    'deposit', 'cashback', 'bonus', 'refund', 'user_recharge', 'razorpay_recharge', 
+    'razor_pay', 'razorpay_payment', 'online_recharge', 'gateway', 'pg', 'self', 
+    'user', 'added', 'pay_in', 'payin', 'rzp'
+];
+
+const isWalletCredit = (t) => {
+    if (!t || typeof t !== 'object') return false;
+
+    const amountType = String(
+        t.amount_type || t.transaction_type || t.type_amount || t.payment_type || t.tx_type || ''
+    ).toLowerCase().trim();
+
+    const type = String(
+        t.type || t.category || t.payment_mode || t.payment_method || t.mode || t.trx_type || t.wallet_type || t.source || t.call_type || ''
+    ).toLowerCase().trim();
+
+    const desc = String(
+        t.description || t.title || t.message || t.remark || t.note || t.details || ''
+    ).toLowerCase().trim();
+
+    // Check if explicitly debit without any razorpay/recharge indicators
+    const isExplicitDebit = ['debit', 'dr', 'minus', 'deduction', 'spent', 'withdraw'].includes(amountType) &&
+        !type.includes('razorpay') && !desc.includes('razorpay') && !t.razorpay_payment_id && !t.razorpay_order_id;
+
+    if (isExplicitDebit) return false;
+
+    const isCreditAmountType = ['credit', 'cr', 'add', 'plus', 'addition', 'topup', 'recharge'].includes(amountType);
+    const isRechargeType = RECHARGE_KEYWORDS.some(kw => type.includes(kw));
+    const hasRazorpayId = !!(
+        t.razorpay_payment_id || 
+        t.payment_id || 
+        t.razorpay_order_id || 
+        t.payment_id_rzp || 
+        t.rzp_payment_id || 
+        t.razorpay_id ||
+        (t.order_id && String(t.order_id).toLowerCase().includes('rzp'))
+    );
+    const matchesDesc = /recharge|top ?up|add(ed)? money|razorpay|wallet (credit|topup|load)|money added|cashback|refund|credit|payment receive|online/i.test(desc);
+    const isRechargeApi = t.is_recharge_api === true;
+
+    return isCreditAmountType || isRechargeType || hasRazorpayId || matchesDesc || isRechargeApi;
+};
+
+
+
+const mapWalletTransaction = (t) => {
+    const rawType = String(t.type || t.category || t.payment_mode || t.payment_method || '').toLowerCase();
+    const desc = String(t.description || t.title || t.message || t.remark || '').trim();
+    const astroName = String(t.astro_name || t.astrologer_name || '').trim();
+    const pujaName = String(t.puja_name || '').trim();
+
+    const isCredit = t.is_recharge_api || isWalletCredit(t);
+    const via = String(t.payment_mode || t.payment_method || t.type || '').toLowerCase();
+    const isRazorpay = via.includes('razorpay') || ['online', 'upi', 'card', 'payment', 'netbanking'].includes(via) ||
+        !!(t.razorpay_payment_id || t.razorpay_order_id) || desc.toLowerCase().includes('razorpay');
+    const isAdmin = rawType === 'admin' || via === 'admin' || t.by === 'admin' || desc.toLowerCase().includes('admin');
 
     let message = desc;
+    if (isCredit && (!message || /^(razorpay|online|payment|upi|credit|recharge|wallet|admin|topup)$/i.test(message))) {
+        message = isAdmin ? 'Added by VaidikGuru'
+            : isRazorpay ? 'Wallet Recharge • Razorpay'
+            : 'Wallet Recharge';
+    }
     if (!message) {
-        if (rawType === 'gift' || desc.toLowerCase().includes('gift')) {
+        if (rawType.includes('gift') || desc.toLowerCase().includes('gift')) {
             message = astroName ? `Gift sent to ${astroName}` : 'Gift Transaction';
-        } else if (rawType === 'puja' || rawType === 'pooja' || rawType === 'chadhava' || desc.toLowerCase().includes('puja') || desc.toLowerCase().includes('chadhava')) {
+        } else if (rawType.includes('puja') || rawType.includes('pooja') || rawType.includes('chadhava') || desc.toLowerCase().includes('puja') || desc.toLowerCase().includes('chadhava')) {
             message = pujaName ? `Puja Booking: ${pujaName}` : 'Puja / Sacred Offering Booking';
-        } else if (rawType === 'chat') {
+        } else if (rawType.includes('chat')) {
             message = astroName ? `Chat Consultation with ${astroName}` : 'Chat Consultation';
-        } else if (rawType === 'audio' || rawType === 'call') {
+        } else if (rawType.includes('audio') || rawType.includes('call')) {
             message = astroName ? `Call Consultation with ${astroName}` : 'Audio Call Consultation';
-        } else if (rawType === 'video') {
+        } else if (rawType.includes('video')) {
             message = astroName ? `Video Consultation with ${astroName}` : 'Video Call Consultation';
         } else {
-            message = isCredit ? "Wallet Recharge" : "Wallet Transaction";
+            message = isCredit ? (isRazorpay ? "Wallet Recharge • Razorpay" : "Wallet Recharge") : "Wallet Transaction";
         }
     }
 
-    const rawDate = (t.transaction_date || t.created_at || '').trim();
+    const rawDate = String(t.transaction_date || t.created_at || t.createdAt || t.date || '').trim();
     let dateStr = "Recent";
     if (rawDate) {
         const isoish = rawDate.replace(' ', 'T');
@@ -93,9 +181,10 @@ const mapWalletTransaction = (t) => {
     }
 
     return {
-        id: t.id || t.order_id || Math.random().toString(),
+        id: t.id || t._id || t.razorpay_payment_id || t.order_id || t.transaction_id || Math.random().toString(),
         type: isCredit ? "credit" : "debit",
-        amount: Math.abs(Number(t.amount) || 0),
+        amount: Math.abs(Number(t.amount ?? t.recharge_amount ?? t.paid_amount ?? t.total_amount) || 0),
+        sortTime: (() => { const d = new Date(rawDate.replace(' ', 'T')); return isNaN(d.getTime()) ? 0 : d.getTime(); })(),
         message: message,
         date: dateStr,
     };
@@ -134,48 +223,34 @@ export default function WalletPage() {
             setLoading(true);
             setError(null);
 
+            // apiService reads token from localStorage; ensure token exists
+            try {
+                const tk = storageService.getToken?.();
+                if (tk && !localStorage.getItem('token')) localStorage.setItem('token', tk);
+            } catch (_) { }
+
             let profileRes = await apiService.getBearer("/user_api/get_profile").catch(() => null);
-            let txnRes = await apiService.postBearer("/user_api/transaction").catch(() => null);
+            let txnRes = await apiService.postBearer("/user_api/transaction", {}).catch(() => null);
+            if (!txnRes) {
+                txnRes = await apiService.getBearer("/user_api/transaction").catch(() => null);
+            }
 
             const bal = extractWalletAmount(profileRes, user);
             setWallet(bal);
 
-            let apiList = [];
-            if (txnRes && txnRes.result && txnRes.transactions && Array.isArray(txnRes.transactions.data)) {
-                apiList = txnRes.transactions.data;
-            } else if (txnRes && Array.isArray(txnRes.data)) {
-                apiList = txnRes.data;
-            } else if (txnRes && Array.isArray(txnRes.transactions)) {
-                apiList = txnRes.transactions;
-            } else if (txnRes && Array.isArray(txnRes.results)) {
-                apiList = txnRes.results;
-            }
-
+            let apiList = extractList(txnRes);
             const merged = mergeGiftTransactions(apiList);
 
-            // Show ONLY wallet recharge transactions.
-            // Exclude gift, chat, call, puja, chadhava and other debit transactions.
-            const rechargeTransactions = merged.filter((t) => {
-                const description = String(t.description || '').toLowerCase();
+            // Show wallet top-ups: Razorpay recharges, admin credits, refunds, cashback.
+            const fromTxn = merged.filter((t) => {
                 const type = String(t.type || t.category || '').toLowerCase();
-                const amountType = String(t.amount_type || '').toLowerCase();
-
-                return (
-                    description.includes('recharge') ||
-                    description.includes('wallet recharge') ||
-                    description.includes('wallet topup') ||
-                    description.includes('top up') ||
-                    type === 'recharge' ||
-                    type === 'wallet_recharge' ||
-                    type === 'topup' ||
-                    (amountType === 'credit' && (
-                        type === 'admin' ||
-                        type === 'bank'
-                    ))
-                );
+                if (type.includes('gift')) return false;
+                return isWalletCredit(t);
             });
 
-            setTransactions(rechargeTransactions.map(mapWalletTransaction));
+            console.info(`[Wallet] recharge rows: ${fromTxn.length} from /transaction`);
+            const rows = fromTxn.map(mapWalletTransaction).sort((a, b) => b.sortTime - a.sortTime);
+            setTransactions(rows);
         } catch (e) {
             console.error("Wallet data fetch error:", e);
             setError("Unable to load your wallet balance right now.");

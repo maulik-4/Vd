@@ -171,10 +171,44 @@ const BlogList = () => {
     }
   };
 
-  const handleSubscribeSubmit = (e) => {
+  const [newsEmail, setNewsEmail] = useState('');
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsMessage, setNewsMessage] = useState(null);
+
+  // Auto-dismiss newsletter message after 4 seconds
+  useEffect(() => {
+    if (newsMessage) {
+      const timer = setTimeout(() => {
+        setNewsMessage(null);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [newsMessage]);
+
+  const handleSubscribeSubmit = async (e) => {
     e.preventDefault();
-    alert('Thank you for subscribing to the DivinIQ Newsletter!');
-    e.target.reset();
+    const email = (newsEmail || '').trim().toLowerCase();
+    if (!email) return;
+
+    setNewsLoading(true);
+    setNewsMessage(null);
+    try {
+      const res = await apiService.postBearer('/user_api/newsletter_subscribe', {
+        email,
+        name: '',
+        source: 'website'
+      });
+      if (res && res.status) {
+        setNewsMessage({ type: 'success', text: res.message || 'Subscribed successfully!' });
+        setNewsEmail('');
+      } else {
+        setNewsMessage({ type: 'error', text: res?.message || 'Unable to subscribe. Try again.' });
+      }
+    } catch (err) {
+      setNewsMessage({ type: 'error', text: err?.response?.data?.message || 'Something went wrong.' });
+    } finally {
+      setNewsLoading(false);
+    }
   };
 
   return (
@@ -417,14 +451,34 @@ const BlogList = () => {
                 <form className="bl-news-form" onSubmit={handleSubscribeSubmit}>
                   <input
                     type="email"
+                    value={newsEmail}
+                    onChange={(e) => {
+                      setNewsEmail(e.target.value);
+                      if (newsMessage) setNewsMessage(null);
+                    }}
                     placeholder="Enter your email"
                     className="bl-news-input"
+                    style={{ color: '#1a1a1a', backgroundColor: '#ffffff' }}
+                    disabled={newsLoading}
                     required
                   />
-                  <button type="submit" className="bl-news-submit">
-                    Subscribe
+                  <button type="submit" disabled={newsLoading} className="bl-news-submit">
+                    {newsLoading ? 'Subscribing...' : 'Subscribe'}
                   </button>
                 </form>
+                {newsMessage && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      fontSize: '13px',
+                      color: newsMessage.type === 'success' ? '#15803d' : '#b91c1c',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {newsMessage.type === 'success' ? '✓ ' : '⚠ '}
+                    {newsMessage.text}
+                  </div>
+                )}
               </div>
             </div>
           </div>

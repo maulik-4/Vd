@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import apiService from "../services/apiServices";
+import storageService from "../services/storageServices";
 import Header from "../components/layout/Header";
 import Footer from "../components/layout/Footer";
 import ScrollToTop from "../components/common/ScrollToTop";
@@ -21,6 +22,95 @@ const loadRazorpay = () =>
 		script.onerror = () => resolve(false);
 		document.body.appendChild(script);
 	});
+
+/* ── Cart helpers ──
+   getPujaCart / pujaaddToCart sometimes return the cart as an ARRAY (or nested
+   under results). Earlier code only read res.data._id, so cart_id was never
+   sent and /puja/bookpuja answered "Cart empty". Always pick one real cart. */
+const pickCart = (res, pujaId) => {
+	if (!res) return null;
+	let d = res.data ?? res.results ?? res.cart ?? res.result ?? null;
+	if (Array.isArray(d)) {
+		if (!d.length) return null;
+		const match = pujaId
+			? d.filter((c) => String(c?.puja_id?._id || c?.puja_id || c?.pujaDetails?._id || c?.pujaDetails?.puja_id || "") === String(pujaId))
+			: [];
+		d = (match.length ? match : d)[(match.length ? match : d).length - 1];
+	}
+	if (!d || typeof d !== "object") return null;
+	return (d._id || d.id || d.puja_id || d.package_id || d.package) ? d : null;
+};
+const cartIdOf = (c) => {
+	const id = c?._id || c?.id || c?.cart_id;
+	return id && !String(id).startsWith("temp_cart_") ? String(id) : undefined;
+};
+// Real backend ids are 24-char Mongo ObjectIds. PujaDetails falls back to
+// DEFAULT_PACKAGES ("pkg_ind", "pkg_fam"…) when the puja API sends no packages;
+// the backend can't put those in a cart → "Cart empty".
+const isObjectId = (v) => /^[a-f0-9]{24}$/i.test(String(v || ""));
+
+// Find the REAL package id for the package the user picked, using the live puja data.
+const resolveRealPackageId = async (pujaId, pkg) => {
+	if (isObjectId(pkg?._id || pkg?.id)) return String(pkg._id || pkg.id);
+	if (!pujaId) return pkg?._id || pkg?.id;
+	try {
+		const res = await apiService.postBearer("/puja/pujabyinstaid", { instaId: pujaId });
+		const d = res?.data || res?.results || {};
+		const list = d.packages || d.pujaPackages || d.package || [];
+		const pkgs = Array.isArray(list) ? list : [];
+		const norm = (x) => String(x || "").toLowerCase().trim();
+		const match =
+			pkgs.find((p) => norm(p.packageType) && norm(p.packageType) === norm(pkg?.packageType)) ||
+			pkgs.find((p) => norm(p.packageName) === norm(pkg?.packageName)) ||
+			pkgs.find((p) => Number(p.packagePrice) === Number(pkg?.packagePrice)) ||
+			pkgs[0];
+		const realId = match?._id || match?.id;
+		console.log("[PujaReviewForm] package id resolved:", pkg?._id, "→", realId, match);
+		return realId || pkg?._id || pkg?.id;
+	} catch (e) {
+		console.warn("[PujaReviewForm] could not resolve real package id:", e?.message);
+		return pkg?._id || pkg?.id;
+	}
+};
+
+// Reads the wallet balance the same way the Wallet page does:
+// results_web → results → data → root. Returns null when it can't be read.
+const readWallet = (res) => {
+	if (!res) return null;
+	const pick = (o) => {
+		if (!o || typeof o !== "object") return undefined;
+		const t = Array.isArray(o) ? o[0] : o;
+		return t?.wallet ?? t?.wallet_amount ?? t?.wallet_balance ?? t?.balance;
+	};
+	const raw = pick(res.results_web) ?? pick(res.results) ?? pick(res.data) ?? pick(res.user) ?? pick(res);
+	if (raw === undefined || raw === null || raw === "") return null;
+	const n = Number(String(raw).replace(/[^0-9.-]/g, ""));
+	return Number.isNaN(n) ? null : n;
+};
+
+// Always fetch a FRESH balance (with the auth token in place).
+const fetchWalletBalance = async () => {
+	// apiService only reads localStorage; storageService may keep the token in a cookie.
+	try {
+		const t = storageService.getToken?.();
+		if (t && !localStorage.getItem("token")) localStorage.setItem("token", t);
+	} catch (_) {}
+	try {
+		const res = await apiService.getBearer("/user_api/get_profile");
+		const bal = readWallet(res);
+		console.log("[PujaReviewForm] wallet balance from get_profile:", bal, res);
+		return bal;
+	} catch (e) {
+		console.error("Wallet fetch error", e?.response?.status, e?.message);
+		return null;
+	}
+};
+
+const isCartEmptyMsg = (res) => {
+	if (!res) return false;
+	const msg = String(res.message || res.msg || res.error || res.data?.message || res.results?.message || "").toLowerCase();
+	return msg.includes("cart empty") || msg.includes("empty cart") || msg.includes("cart is empty") || msg.includes("cart not found");
+};
 
 /* ══════════════════════════════════════════════
    STATUS MODAL
@@ -258,6 +348,7 @@ const PujaFillForm = () => {
 		address: { pincode: "", city: "", state: "", houseNo: "", area: "", landmark: "" },
 	});
 
+	const submittingRef = useRef(false); // stops a double tap from booking (and charging the wallet) twice
 	const pollIntervalRef = useRef(null);
 	const stopPolling = () => { if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; } };
 	useEffect(() => () => stopPolling(), []);
@@ -267,8 +358,8 @@ const PujaFillForm = () => {
 			let validServerCart = null;
 			try {
 				const res = await apiService.postBearer('/puja/getPujaCart', {});
-				if (res?.status && res.data && (res.data._id || res.data.puja_id || res.data.package_id || res.data.package)) {
-					validServerCart = res.data;
+				if (res?.status) {
+					validServerCart = pickCart(res, pujaMasterData?._id || pujaMasterData?.id);
 				}
 			} catch (e) {
 				console.error('Cart fetch error', e);
@@ -297,8 +388,9 @@ const PujaFillForm = () => {
 						userDetails: { name: devoteeDetails?.name || "Devotee" },
 					};
 					const addRes = await apiService.postBearer("/puja/pujaaddToCart", payload);
-					if (addRes?.status && addRes.data) {
-						setCart(addRes.data);
+					const addedCart = addRes?.status ? pickCart(addRes, payload.puja_id) : null;
+					if (addedCart) {
+						setCart(addedCart);
 						setCartError(false);
 						return;
 					}
@@ -323,14 +415,8 @@ const PujaFillForm = () => {
 		};
 
 		const fetchWallet = async () => {
-			try {
-				const res = await apiService.getBearer('/user_api/get_profile');
-				if (res?.status && res?.results) {
-					setWalletBalance(Number(res.results.wallet || 0));
-				}
-			} catch (e) {
-				console.error('Wallet fetch error', e);
-			}
+			const bal = await fetchWalletBalance();
+			if (bal !== null) setWalletBalance(bal);
 		};
 
 		const fetchPujaAddons = async () => {
@@ -439,22 +525,23 @@ const PujaFillForm = () => {
 					whatsappNumber: formData.whatsapp || devoteeDetails?.whatsapp || "",
 					gotra: formData.isGotraKnown && formData.gotra ? formData.gotra : "Kashyap (Generic)",
 				},
-				deliveryAddress: isHomeDelivery && hasFullAddress
-					? {
+				...(isHomeDelivery && hasFullAddress ? { deliveryAddress: {
 						pincode: formData.address.pincode,
 						city: formData.address.city || "",
 						state: formData.address.state || "",
 						houseNumber: formData.address.houseNo || "",
 						area: formData.address.area || "",
 						landmark: formData.address.landmark || "",
-					}
-					: null,
+				} } : {}),
 			};
 
 			console.log("[PujaReviewForm] Submitting cart payload:", payload);
 			const res = await apiService.postBearer("/puja/pujaaddToCart", payload);
 			console.log("[PujaReviewForm] Cart API Response:", res);
-
+			const updatedCart = res?.status ? pickCart(res, pujaId) : null;
+			if (updatedCart) setCart(updatedCart);
+			const freshBal = await fetchWalletBalance();
+			if (freshBal !== null) setWalletBalance(freshBal);
 			setIsConfirmModalOpen(true);
 		} catch (error) {
 			console.error("[PujaReviewForm] Cart update error:", error);
@@ -465,88 +552,299 @@ const PujaFillForm = () => {
 	};
 
 	const handleFinalSubmit = async (paymentMode) => {
+		if (submittingRef.current) return;
+		submittingRef.current = true;
+		const releaseSubmit = () => { submittingRef.current = false; };
 		setIsConfirmModalOpen(false);
 		setIsLoading(true);
+		const submitStartedAt = Date.now();
 		try {
-			const pujaId = pujaMasterData?._id || pujaMasterData?.id || state?.pujaData?._id || cart?.pujaDetails?.puja_id;
-			const packageId = selectedPackage?._id || selectedPackage?.id || cart?.package?.package_id;
-			
+			const pujaId = pujaMasterData?._id || pujaMasterData?.id || state?.pujaData?._id || cart?.pujaDetails?.puja_id || cart?.pujaDetails?._id || cart?.puja_id;
+			let packageId = selectedPackage?._id || selectedPackage?.id || cart?.package?.package_id || cart?.package_id || cart?.package?._id;
+			// Package chosen but its id is a placeholder → swap for the real one
+			// so the server can build the cart and the puja actually gets booked.
+			if (!isObjectId(packageId)) {
+				const cartPkgId = cart?.package?.package_id || cart?.package_id || cart?.package?._id;
+				packageId = isObjectId(cartPkgId)
+					? cartPkgId
+					: await resolveRealPackageId(pujaId, selectedPackage || cart?.package);
+			}
+			if (!pujaId || !packageId) {
+				setIsLoading(false);
+				releaseSubmit();
+				alert("Please select a puja package again and retry.");
+				return;
+			}
+
+			const hasFullAddress = Boolean(
+				formData.address?.pincode &&
+				formData.address?.houseNo
+			);
+			const isHomeDelivery = formData.wantsAashirwad === "Yes" && (rawHomeSelected.length > 0 || hasFullAddress);
+
+			// Re-sync cart on server to ensure server session is fresh
+			let currentCartId = cart?._id || cart?.id;
+			if (!currentCartId || String(currentCartId).startsWith("temp_cart_")) {
+				currentCartId = undefined;
+			}
+			try {
+				const syncPayload = {
+					puja_id: pujaId,
+					package_id: packageId,
+					addons_selected: rawTempleSelected,
+					home_addons_selected: rawHomeSelected,
+					is_home_delivery_required: isHomeDelivery,
+					userDetails: {
+						name: formData.participantName || devoteeDetails?.name || "Devotee",
+						whatsappNumber: formData.whatsapp || devoteeDetails?.whatsapp || "",
+						gotra: formData.isGotraKnown && formData.gotra ? formData.gotra : "Kashyap (Generic)",
+					},
+					...(isHomeDelivery && hasFullAddress ? { deliveryAddress: {
+							pincode: formData.address.pincode,
+							city: formData.address.city || "",
+							state: formData.address.state || "",
+							houseNumber: formData.address.houseNo || "",
+							area: formData.address.area || "",
+							landmark: formData.address.landmark || "",
+					} } : {}),
+				};
+				const syncRes = await apiService.postBearer("/puja/pujaaddToCart", syncPayload).catch(() => null);
+				const syncedCart = syncRes?.status ? pickCart(syncRes, pujaId) : null;
+				if (syncedCart) {
+					setCart(syncedCart);
+					currentCartId = cartIdOf(syncedCart) || currentCartId;
+				}
+				// Confirm the server really has the cart (and get its real id) before paying.
+				if (!currentCartId) {
+					const check = await apiService.postBearer("/puja/getPujaCart", {}).catch(() => null);
+					const serverCart = check?.status ? pickCart(check, pujaId) : null;
+					if (serverCart) {
+						setCart(serverCart);
+						currentCartId = cartIdOf(serverCart);
+					}
+				}
+				// Verify the server cart really holds this puja. If not, add it again with
+				// the exact minimal payload the Review page uses (that one works).
+				const verify = await apiService.postBearer("/puja/getPujaCart", {}).catch(() => null);
+				console.log("[PujaReviewForm] getPujaCart before booking:", verify);
+				let verified = verify?.status ? pickCart(verify, pujaId) : null;
+				if (!verified) {
+					const minimalAdd = await apiService.postBearer("/puja/pujaaddToCart", {
+						puja_id: pujaId,
+						package_id: packageId,
+						addons_selected: rawTempleSelected,
+						home_addons_selected: rawHomeSelected,
+						is_home_delivery_required: rawHomeSelected.length > 0,
+						userDetails: { name: formData.participantName || devoteeDetails?.name || "Devotee" },
+					}).catch((e) => e?.response?.data || null);
+					console.log("[PujaReviewForm] minimal pujaaddToCart:", minimalAdd);
+					verified = minimalAdd?.status ? pickCart(minimalAdd, pujaId) : null;
+					if (!verified) {
+						const again = await apiService.postBearer("/puja/getPujaCart", {}).catch(() => null);
+						verified = again?.status ? pickCart(again, pujaId) : null;
+					}
+				}
+				if (verified) {
+					setCart(verified);
+					currentCartId = cartIdOf(verified) || currentCartId;
+				}
+				console.log("[PujaReviewForm] cart_id used for booking:", currentCartId || "(none)");
+			} catch (err) {
+				console.warn("[PujaReviewForm] Cart pre-sync notice:", err);
+			}
+
+			const pkgPrice = Number(selectedPackage?.packagePrice ?? cart?.base_total ?? cart?.package?.packagePrice ?? 0);
+			const addonsTotal = Number(cart?.addons_total || 0);
+			const homeAddonsTotal = Number(cart?.home_addons_total || 0);
+			const calcTotal = Number(cart?.grand_total ? (cart.grand_total + 10) : (pkgPrice + addonsTotal + homeAddonsTotal + 10 - Number(cart?.discount || 0)));
+
+			// Pre-check for wallet payment
+			let currentBalance = walletBalance;
+			if (paymentMode === "wallet") {
+				const freshBal = await fetchWalletBalance();
+				if (freshBal !== null) { currentBalance = freshBal; setWalletBalance(freshBal); }
+			}
+			if (paymentMode === "wallet" && currentBalance < calcTotal) {
+				setIsLoading(false);
+				releaseSubmit();
+				alert(`Insufficient wallet balance!\nYour wallet balance is ₹${currentBalance}, but the total payable amount is ₹${calcTotal}.\n\nPlease select Online Payment (UPI / Card) or recharge your wallet.`);
+				return;
+			}
+
 			const bookPayload = {
 				payment_mode: paymentMode,
+				...(currentCartId ? { cart_id: currentCartId } : {}),
 				puja_id: pujaId,
 				package_id: packageId,
-				cart_id: cart?._id || cart?.id,
 				userDetails: {
 					name: formData.participantName || devoteeDetails?.name || "Devotee",
+					whatsapp: formData.whatsapp || devoteeDetails?.whatsapp || "",
 					whatsappNumber: formData.whatsapp || devoteeDetails?.whatsapp || "",
 					gotra: formData.isGotraKnown && formData.gotra ? formData.gotra : "Kashyap (Generic)",
-				}
+				},
+				...(isHomeDelivery && hasFullAddress ? { deliveryAddress: {
+						pincode: formData.address.pincode,
+						city: formData.address.city || "",
+						state: formData.address.state || "",
+						houseNumber: formData.address.houseNo || "",
+						area: formData.address.area || "",
+						landmark: formData.address.landmark || "",
+				} } : {}),
 			};
 
-			let response = await apiService.postBearer("/puja/bookpuja", bookPayload).catch(() => null);
-			if (!response || (!response.status && !response.orderId && !response.order_id)) {
-				response = await apiService.postBearer("https://admin.vaidikguru.com/puja/bookpuja", bookPayload).catch(() => null);
+			let response = await apiService.postBearer("/puja/bookpuja", bookPayload).catch((e) => e?.response?.data || null);
+
+			// Did a booking for this puja get created since the user pressed Pay?
+			// Used when the server says "Cart empty" or the reply was lost — the
+			// booking (and wallet deduction) may already have gone through.
+			const findJustCreatedBooking = async () => {
+				let res = await apiService.postBearer("/puja/mypujabookings", {}).catch(() => null);
+				if (!res || (!res.status && !res.results && !res.data)) {
+					res = await apiService.getBearer("/puja/mypujabookings").catch(() => null);
+				}
+				const raw = res?.results || res?.bookPooja || res?.data || res?.result || res?.bookings || [];
+				const list = Array.isArray(raw) ? raw : [];
+				return list.find((b) => {
+					const bPuja = String(b?.puja_id?._id || b?.puja_id || "");
+					const created = new Date(b?.createdAt || b?.created_at || 0).getTime();
+					return (!pujaId || bPuja === String(pujaId)) && created >= submitStartedAt - 60 * 1000;
+				}) || null;
+			};
+
+			if (!response || isCartEmptyMsg(response)) {
+				// 1) Maybe it already booked (double tap / lost reply) — never book twice.
+				const existing = await findJustCreatedBooking();
+				if (existing) {
+					console.log("[PujaReviewForm] Booking already created — not booking again:", existing._id);
+					response = { status: true, booking: existing, booking_id: existing._id };
+				} else if (isCartEmptyMsg(response)) {
+					// 2) Genuine empty cart: rebuild it once, then retry with the fresh cart id.
+					console.log("[PujaReviewForm] Backend reported Cart empty. Re-adding to cart and retrying once...");
+					const forceCartRes = await apiService.postBearer("/puja/pujaaddToCart", {
+						puja_id: pujaId,
+						package_id: packageId,
+						addons_selected: rawTempleSelected,
+						home_addons_selected: rawHomeSelected,
+						is_home_delivery_required: isHomeDelivery,
+						userDetails: bookPayload.userDetails,
+						...(bookPayload.deliveryAddress ? { deliveryAddress: bookPayload.deliveryAddress } : {}),
+					}).catch(() => null);
+					let freshCart = forceCartRes?.status ? pickCart(forceCartRes, pujaId) : null;
+					if (!cartIdOf(freshCart)) {
+						const check = await apiService.postBearer("/puja/getPujaCart", {}).catch(() => null);
+						freshCart = (check?.status ? pickCart(check, pujaId) : null) || freshCart;
+					}
+					const newCartId = cartIdOf(freshCart);
+					response = await apiService.postBearer("/puja/bookpuja", {
+						...bookPayload,
+						...(newCartId ? { cart_id: newCartId } : {}),
+					}).catch((e) => e?.response?.data || null);
+
+					if (!response || isCartEmptyMsg(response)) {
+						const late = await findJustCreatedBooking();
+						if (late) response = { status: true, booking: late, booking_id: late._id };
+					}
+				}
 			}
 
 			console.log("[PujaReviewForm] Book Puja API Response:", response);
-			
-			const isSuccess = response?.status === true || response?.status === "success" || response?.status === 200 || response?.success === true || !!response?.orderId || !!response?.order_id;
-			
-			if (isSuccess) {
-				if (paymentMode === "razorpay") {
-					setIsLoading(false);
-					const razorpayLoaded = await loadRazorpay();
-					if (!razorpayLoaded) { alert("Razorpay SDK failed to load. Please try again."); return; }
-					const orderId = response.orderId || response.order_id || response.id;
-					let isPaymentDone = false;
-					const redirectTarget = window.location.origin + "/my_puja_booking";
-					const options = {
-						key: "rzp_live_TdTaMRFmlmWrMf",
-						amount: response.amount,
-						currency: "INR",
-						name: "Vaidik Guru",
-						description: "Puja Booking Payment",
-						order_id: orderId,
-						callback_url: redirectTarget,
-						redirect: false,
-						handler: function (rzpResp) {
-							console.log("[PujaReviewForm] Razorpay Success Handler:", rzpResp);
-							isPaymentDone = true;
-							try { refreshProfile?.(); } catch (err) { console.error(err); }
-							window.location.replace(redirectTarget);
-						},
-						prefill: { name: formData.participantName, contact: formData.whatsapp },
-						theme: { color: "#FCD417" },
-						modal: {
-							ondismiss: function () {
-								if (isPaymentDone) {
-									window.location.replace(redirectTarget);
-								}
+
+			const isSuccess = Boolean(
+				response?.status === true ||
+				response?.status === "true" ||
+				response?.status === "success" ||
+				response?.status === 200 ||
+				response?.status === 1 ||
+				response?.success === true ||
+				!!response?.orderId ||
+				!!response?.order_id ||
+				!!response?.id ||
+				!!response?.booking?._id ||
+				!!response?.booking_id ||
+				!!response?.data?._id ||
+				!!response?.results?._id
+			);
+
+			if (paymentMode === "razorpay") {
+				setIsLoading(false);
+				const razorpayLoaded = await loadRazorpay();
+				if (!razorpayLoaded) { releaseSubmit(); alert("Razorpay SDK failed to load. Please try again."); return; }
+
+				const orderId = response?.orderId || response?.order_id || response?.id || response?.data?.orderId || response?.data?.order_id || response?.results?.orderId;
+				const rzpAmount = response?.amount || response?.data?.amount || response?.results?.amount || Math.round(calcTotal * 100);
+
+				let isPaymentDone = false;
+				const redirectTarget = window.location.origin + "/my_puja_booking";
+				const options = {
+					key: response?.key || response?.results?.key || "rzp_live_TdTaMRFmlmWrMf",
+					amount: rzpAmount,
+					currency: "INR",
+					name: "Vaidik Guru",
+					description: "Puja Booking Payment",
+					...(orderId ? { order_id: orderId } : {}),
+					callback_url: redirectTarget,
+					redirect: false,
+					handler: async function (rzpResp) {
+						console.log("[PujaReviewForm] Razorpay Success Handler:", rzpResp);
+						isPaymentDone = true;
+						try {
+							if (rzpResp?.razorpay_payment_id) {
+								await apiService.postBearer("/puja/verify_puja_payment", {
+									razorpay_payment_id: rzpResp.razorpay_payment_id,
+									razorpay_order_id: rzpResp.razorpay_order_id,
+									razorpay_signature: rzpResp.razorpay_signature,
+									puja_id: pujaId,
+									package_id: packageId,
+								}).catch(() => null);
+							}
+						} catch (e) {
+							console.error("Verification notice:", e);
+						}
+						try { refreshProfile?.(); } catch (err) { console.error(err); }
+						window.location.replace(redirectTarget);
+					},
+					prefill: { name: formData.participantName, contact: formData.whatsapp },
+					theme: { color: "#FCD417" },
+					modal: {
+						ondismiss: function () {
+							if (isPaymentDone) {
+								window.location.replace(redirectTarget);
+							} else {
+								releaseSubmit();
 							}
 						}
-					};
-					const rzp = new window.Razorpay(options);
-					rzp.open();
-				} else {
-					// Instant direct redirect for Wallet payment mode
-					const bookingId = response.orderId || response.order_id || response.id || response.booking?._id;
+					}
+				};
+
+				const rzp = new window.Razorpay(options);
+				rzp.open();
+				return;
+			} else {
+				if (isSuccess) {
+					// Direct redirect for Wallet payment mode
+					const bookingId = response?.booking?._id || response?.booking_id || response?.data?._id || response?.results?._id || response?.orderId || response?.order_id || response?.id;
 					if (bookingId) {
 						try {
-							await apiService.getBearer(`/puja/puja_payment_status/${bookingId}`);
+							await apiService.getBearer(`/puja/puja_payment_status/${bookingId}`).catch(() => null);
+							await apiService.getBearer(`/puja/payment_status/${bookingId}`).catch(() => null);
 						} catch (err) {
 							console.error("Wallet puja payment status update error:", err);
 						}
 					}
 					try { refreshProfile?.(); } catch (err) { console.error(err); }
 					window.location.replace(window.location.origin + "/my_puja_booking");
+				} else {
+					setIsLoading(false);
+					releaseSubmit();
+					const errMsg = isCartEmptyMsg(response)
+						? "Your booking could not be completed because the cart was empty. No money was taken from your wallet — please go back to the puja page, select the package again and try once more."
+						: response?.message || response?.msg || response?.error || response?.data?.message || response?.results?.message || (typeof response === "string" ? response : "Booking failed. Please check your wallet balance or try again.");
+					alert(errMsg);
 				}
-			} else {
-				setIsLoading(false);
-				console.error("[PujaReviewForm] Booking status not success:", response);
-				alert(response?.message || "Booking failed. Please try again.");
 			}
 		} catch (e) {
 			setIsLoading(false);
+			releaseSubmit();
 			console.error("[PujaReviewForm] Booking Error:", e);
 			alert("Something went wrong while booking. Please try again.");
 		}
