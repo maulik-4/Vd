@@ -160,7 +160,7 @@ const AstrologerCard = ({ astro, onChat, onNotify, onFollow }) => {
     }
   };
 
-  const handleFollowClick = (e) => {
+  const handleFollowClick = async (e) => {
     e.stopPropagation();
     const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
     if (!token) {
@@ -172,6 +172,14 @@ const AstrologerCard = ({ astro, onChat, onNotify, onFollow }) => {
     const key = getFollowKey(astro);
     if (key) {
       try { localStorage.setItem(key, String(nextState)); } catch (_) {}
+    }
+    const astroId = String(astro?.id || astro?._id || '');
+    if (astroId) {
+      try {
+        await apiService.postBearer('/user_api/follow_astro', { astro_id: astroId });
+      } catch (err) {
+        console.error('[Follow] API error:', err);
+      }
     }
     if (onFollow) onFollow(astro, nextState, false);
   };

@@ -31,7 +31,7 @@ const rate = (base, offer) => {
   const b = Number(base);
   return Number.isNaN(b) || b <= 0 ? null : b;
 };
-const getChatPrice  = a => rate(a?.per_min_chat,       a?.per_min_chat_offer);
+const getChatPrice = a => rate(a?.per_min_chat, a?.per_min_chat_offer);
 const getVoicePrice = a => rate(a?.per_min_voice_call, a?.per_min_voice_call_offer);
 const getVideoPrice = a => rate(a?.per_min_video_call, a?.per_min_video_call_offer);
 const isOn = v => String(v || '').toLowerCase() === 'on';
@@ -97,6 +97,30 @@ const RevStars = ({ val = 5 }) => (
     ))}
   </div>
 );
+
+/* Reviewer Avatar — shows real photo if available, else colored initials unique per user */
+const REV_AV_COLORS = ['#7c3aed', '#059669', '#dc2626', '#d97706', '#2563eb', '#db2777', '#0891b2', '#65a30d', '#d946ef', '#f97316'];
+const revAvColor = (name = '') => {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+  return REV_AV_COLORS[Math.abs(h) % REV_AV_COLORS.length];
+};
+const revInitials = (name = '') => (name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+const ReviewAvatar = ({ name, src }) => {
+  const [err, setErr] = useState(false);
+  if (src && !err) {
+    return <img className="ad-rev-av" src={src} alt={name} onError={() => setErr(true)} />;
+  }
+  return (
+    <div className="ad-rev-av" style={{
+      background: `linear-gradient(135deg, ${revAvColor(name)}, ${revAvColor(name)}cc)`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#fff', fontWeight: 700, fontSize: 15, flexShrink: 0,
+    }}>
+      {revInitials(name)}
+    </div>
+  );
+};
 const FaqItem = ({ q, a }) => {
   const [open, setOpen] = useState(false);
   return (
@@ -252,7 +276,7 @@ const AstrologerDetail = () => {
   useEffect(() => { if (astro?.name) astroNameRef.current = astro.name; }, [astro?.name]);
 
   const pollProfileStatus = useCallback(async () => {
-      if (document.visibilityState === 'hidden' || !id) return;
+    if (document.visibilityState === 'hidden' || !id) return;
     try {
       // Live status comes from astrologer_list — the same endpoint the cards read,
       // and the only one that reports is_busy correctly. astrologer_profile either
@@ -285,7 +309,7 @@ const AstrologerDetail = () => {
         per_min_voice_call: live.per_min_voice_call ?? prev.per_min_voice_call,
         per_min_video_call: live.per_min_video_call ?? prev.per_min_video_call,
       }) : prev);
-    } catch (_) {}
+    } catch (_) { }
   }, [id]);
 
   const location = useLocation();
@@ -331,9 +355,9 @@ const AstrologerDetail = () => {
     })();
     return () => { cancelled = true; };
   }, [similar, id]);
-// API still returns gift images hosted on the old domain — rewrite to the current one.
-const fixImgHost = (url) =>
-  typeof url === 'string' ? url.replace('admin.astrogurujii.com', 'admin.vaidikguru.com') : url;
+  // API still returns gift images hosted on the old domain — rewrite to the current one.
+  const fixImgHost = (url) =>
+    typeof url === 'string' ? url.replace('admin.astrogurujii.com', 'admin.vaidikguru.com') : url;
   // Load the blessings gifts from the API (falls back to STATIC_GIFTS)
   useEffect(() => {
     let cancelled = false;
@@ -343,14 +367,15 @@ const fixImgHost = (url) =>
         // Backend may return the list under `data`, `results`, or at the root.
         const arr = resp?.data ?? resp?.results ?? (Array.isArray(resp) ? resp : []);
         if (!cancelled && Array.isArray(arr) && arr.length > 0) {
-  setGiftList(arr.map(g => ({
-    _id: g._id,           // keep the REAL server id — this is what gift_transaction needs
-    title: g.title,
-    price: g.price,
-    image: fixImgHost(g.image),
-    emoji: emojiFor(g.title),
-  })));
-}     } catch (_) {
+          setGiftList(arr.map(g => ({
+            _id: g._id,           // keep the REAL server id — this is what gift_transaction needs
+            title: g.title,
+            price: g.price,
+            image: fixImgHost(g.image),
+            emoji: emojiFor(g.title),
+          })));
+        }
+      } catch (_) {
         // keep STATIC_GIFTS
       }
     })();
@@ -402,13 +427,20 @@ const fixImgHost = (url) =>
 
   const [notified, setNotified] = useState(false);
   const [followed, setFollowed] = useState(() => isAstroFollowed(id || astro?.id || astro?._id));
+  const [localFollowersCount, setLocalFollowersCount] = useState(0);
   const [toastMsg, setToastMsg] = useState(null);
 
   useEffect(() => {
     setFollowed(isAstroFollowed(id || astro?.id || astro?._id));
   }, [id, astro?.id, astro?._id]);
 
-  const handleFollowToggle = () => {
+  useEffect(() => {
+    if (astro) {
+      setLocalFollowersCount(Number(astro.follow_count ?? astro.followers ?? 0));
+    }
+  }, [astro?.id, astro?._id, astro?.follow_count, astro?.followers]);
+
+  const handleFollowToggle = async () => {
     const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
     if (!token) {
       setShowLoginModal(true);
@@ -417,9 +449,18 @@ const fixImgHost = (url) =>
     const astroId = String(astro?.id || astro?._id || id || '');
     const next = !followed;
     setFollowed(next);
+    // Update follower count optimistically: +1 when following, -1 when unfollowing
+    setLocalFollowersCount(prev => Math.max(0, prev + (next ? 1 : -1)));
     const key = getFollowKey(astroId);
     if (key) {
-      try { localStorage.setItem(key, String(next)); } catch (_) {}
+      try { localStorage.setItem(key, String(next)); } catch (_) { }
+    }
+    if (astroId) {
+      try {
+        await apiService.postBearer('/user_api/follow_astro', { astro_id: astroId });
+      } catch (err) {
+        console.error('[Follow] API error:', err);
+      }
     }
     setToastMsg(next ? `You are now following ${astro?.name || 'this astrologer'}.` : `You unfollowed ${astro?.name || 'this astrologer'}.`);
     setTimeout(() => setToastMsg(null), 2500);
@@ -505,7 +546,7 @@ const fixImgHost = (url) =>
   const rating = parseFloat(getAstroRating(astro));
   const totalReviewCount = getAstroReviewCount(astro);
   const totalConsultations = astro.consult ?? astro.total_orders ?? '0';
-  const followersCount = astro.follow_count ?? astro.followers ?? 0;
+  const followersCount = localFollowersCount;
 
   const SKILLS = (Array.isArray(astro.skill) && astro.skill.length > 0)
     ? astro.skill.map(s => typeof s === 'object' ? (s.name || s.skill_name || s.title) : s).filter(Boolean)
@@ -540,7 +581,7 @@ const fixImgHost = (url) =>
   const reviewsSource = (astro.rating && astro.rating.length > 0)
     ? astro.rating.map(r => ({
       name: (r.name || '').trim() || 'Anonymous',
-      av: fixImgHost(r.profile_img) || '/assets/img/user/user1.jpg',
+      av: fixImgHost(r.user_img || r.user_profile || r.profile_img || r.image || r.user_image || r.avatar || ''),
       time: timeAgo(r.Created_date),
       stars: r.rating || 5,
       text: r.review || 'No written feedback provided.',
@@ -581,8 +622,8 @@ const fixImgHost = (url) =>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 'fit-content' }}>
                     <div className="ad-av-wrap">
                       <div className="ad-av-clip">
-                      {astro.profile_img && !imgErr
-  ? <img src={fixImgHost(astro.profile_img)} alt={astro.name} onError={() => setImgErr(true)} />
+                        {astro.profile_img && !imgErr
+                          ? <img src={fixImgHost(astro.profile_img)} alt={astro.name} onError={() => setImgErr(true)} />
                           : <div className="ad-av-init" style={{ background: `linear-gradient(135deg,${avColor(astro.name)},${avColor(astro.name)}99)` }}>{initials(astro.name)}</div>
                         }
                       </div>
@@ -745,9 +786,9 @@ const fixImgHost = (url) =>
                   {/* per-minute rates: chat / voice / video */}
                   <div className="ad-rates">
                     {[
-                      { ic: 'fas fa-comment-dots', lbl: 'Chat',  amt: getChatPrice(astro),  on: canChat },
-                      { ic: 'fas fa-phone',        lbl: 'Call',  amt: getVoicePrice(astro), on: canCall },
-                      { ic: 'fas fa-camera',       lbl: 'Video', amt: getVideoPrice(astro), on: isOn(astro.is_video_online) },
+                      { ic: 'fas fa-comment-dots', lbl: 'Chat', amt: getChatPrice(astro), on: canChat },
+                      { ic: 'fas fa-phone', lbl: 'Call', amt: getVoicePrice(astro), on: canCall },
+                      { ic: 'fas fa-camera', lbl: 'Video', amt: getVideoPrice(astro), on: isOn(astro.is_video_online) },
                     ].map(r => (
                       <div key={r.lbl} className={`ad-rate${r.on && r.amt !== null ? '' : ' off'}`}>
                         <i className={r.ic} />
@@ -944,7 +985,7 @@ const fixImgHost = (url) =>
                   <div key={i} className="col-md-4">
                     <div className="ad-rev-card">
                       <div className="ad-rev-user">
-                        <img className="ad-rev-av" src={r.av} alt={r.name} onError={e => { e.target.src = '/assets/img/team/team_1_1.jpg' }} />
+                        <ReviewAvatar name={r.name} src={r.av} />
                         <div>
                           <div className="ad-rev-name">{r.name}</div>
                           <div className="ad-rev-veri">✓ Verified Purchase</div>
@@ -1054,7 +1095,7 @@ const fixImgHost = (url) =>
           {reviewsSource.map((r, i) => (
             <div key={i} className="ad-popup-rev">
               <div className="ad-rev-user mb-2">
-                <img className="ad-rev-av" src={r.av} alt={r.name} onError={e => { e.target.src = '/assets/img/team/team_1_1.jpg' }} />
+                <ReviewAvatar name={r.name} src={r.av} />
                 <div>
                   <div className="ad-rev-name">{r.name}</div>
                   <div className="ad-rev-veri">✓ Verified Purchase</div>
@@ -1107,7 +1148,7 @@ const fixImgHost = (url) =>
         onSubmit={async (details) => {
           const mode = detailsModal;               // 'chat' | 'call'
           setDetailsModal(null);
-        
+
           // FIX: walletBalance is set by an earlier get_profile fetch on page load
           // — if the user clicks through quickly, before that fetch resolves,
           // walletBalance is still its default 0. Re-fetch the real, current
@@ -1118,7 +1159,7 @@ const fixImgHost = (url) =>
             const w = await apiService.getBearer('/user_api/get_profile');
             freshWallet = Number(w?.results?.wallet ?? w?.results_web?.wallet ?? w?.wallet ?? walletBalance);
           } catch (_) { /* keep last-known walletBalance */ }
-        
+
           navigate(`/consultation/calling/${astro.id || astro._id}`, {
             replace: true,
             state: {
@@ -1130,8 +1171,8 @@ const fixImgHost = (url) =>
               // use the voice-call rate for mode === 'call'.
               rate:
                 mode === 'video' ? (getVideoPrice(astro) ?? getVoicePrice(astro) ?? getChatPrice(astro) ?? 5)
-                : mode === 'call' ? (getVoicePrice(astro) ?? getChatPrice(astro) ?? 5)
-                : (getChatPrice(astro) ?? 5),
+                  : mode === 'call' ? (getVoicePrice(astro) ?? getChatPrice(astro) ?? 5)
+                    : (getChatPrice(astro) ?? 5),
               wallet: freshWallet,
               intake: {
                 name: details.name,
@@ -1142,7 +1183,7 @@ const fixImgHost = (url) =>
               },
             },
           });
-        
+
         }}
       />
       {/* <UserDetailsModal

@@ -25,18 +25,49 @@ export default function RateConsultationModal({ onClose, onSkip, onSubmit }) {
   const [rating, setRating] = useState(5);
   const [hoverRating, setHoverRating] = useState(0);
   const [category, setCategory] = useState('Career');
-  const [review, setReview] = useState('');
+  // userText = the portion manually typed by the user (free-form, after any tag prefix)
+  const [userText, setUserText] = useState('');
+  // tags = quick-select chips; also appear as text inside the textarea
   const [tags, setTags] = useState(['Accurate Prediction']);
   const [anonymous, setAnonymous] = useState(false);
 
   const activeRating = hoverRating || rating;
 
+  // Build the live textarea value from selected tags + user's own text
+  const buildTextareaValue = (currentTags, currentUserText) => {
+    const tagPart = currentTags.join(', ');
+    if (tagPart && currentUserText) return `${tagPart} - ${currentUserText}`;
+    if (tagPart) return tagPart;
+    return currentUserText;
+  };
+
+  const textareaValue = buildTextareaValue(tags, userText);
+
+  // When user types in the textarea, strip the tag prefix to isolate free-form text
+  const handleTextareaChange = (e) => {
+    const raw = e.target.value;
+    const tagPart = tags.join(', ');
+    const separator = tagPart ? `${tagPart} - ` : '';
+
+    if (separator && raw.startsWith(separator)) {
+      // User typed after the tag prefix — keep their text
+      setUserText(raw.slice(separator.length));
+    } else if (separator && raw.startsWith(tagPart)) {
+      // Partial separator (user deleted the " - " part), keep their text after tag part
+      setUserText(raw.slice(tagPart.length).replace(/^[\s\-]+/, ''));
+    } else {
+      // Tags were removed from textarea or user rewrote everything — store as userText
+      setUserText(raw);
+    }
+  };
+
   const toggleTag = (tag) => {
-    setTags((prev) =>
-      prev.includes(tag)
+    setTags((prev) => {
+      const next = prev.includes(tag)
         ? prev.filter((t) => t !== tag)
-        : [...prev, tag]
-    );
+        : [...prev, tag];
+      return next;
+    });
   };
 
   return (
@@ -107,11 +138,11 @@ export default function RateConsultationModal({ onClose, onSkip, onSubmit }) {
             className="review-textarea"
             placeholder="Share your experience..."
             maxLength={300}
-            value={review}
-            onChange={(e) => setReview(e.target.value)}
+            value={textareaValue}
+            onChange={handleTextareaChange}
             style={{ resize: 'none' }}
           />
-          <span className="char-count">{review.length}/300</span>
+          <span className="char-count">{textareaValue.length}/300</span>
         </div>
 
         <div className="tag-row">
@@ -157,9 +188,8 @@ export default function RateConsultationModal({ onClose, onSkip, onSubmit }) {
           <button
             className="btn btn--primary"
             onClick={() => {
-              const finalReview = tags.length > 0
-                ? `${tags.join(', ')}${review ? ` - ${review}` : ''}`
-                : review;
+              // finalReview is the full composed value visible in the textarea
+              const finalReview = textareaValue;
 
               console.log('Final Review:', finalReview);
 
