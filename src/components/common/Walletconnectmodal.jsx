@@ -41,7 +41,7 @@ const MODES = {
  */
 const WalletConnectModal = ({
   isOpen, onClose, astrologer = {}, walletBalance = 0,
-  mode = 'chat', onConnect, onRecharge,
+  mode = 'chat', onConnect, onRecharge, walletLoading = false,
 }) => {
   const navigate = useNavigate();
 
@@ -121,7 +121,17 @@ const WalletConnectModal = ({
                   <div className="wc-wallet-ico"><i className="fas fa-wallet" /></div>
                   <div>
                     <div className="wc-wallet-lbl">Wallet Balance</div>
-                    <div className="wc-wallet-amt">₹{Number(walletBalance).toLocaleString('en-IN')}</div>
+                    <div className="wc-wallet-amt" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      ₹{Number(walletBalance).toLocaleString('en-IN')}
+                      {walletLoading && (
+                        <span style={{
+                          display: 'inline-block', width: 12, height: 12,
+                          border: '2px solid #e5e7eb', borderTop: '2px solid #7c1d40',
+                          borderRadius: '50%', animation: 'wc-spin 0.7s linear infinite',
+                          flexShrink: 0,
+                        }} />
+                      )}
+                    </div>
                   </div>
                 </div>
                 <button className="wc-add-btn" onClick={handleRecharge}>

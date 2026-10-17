@@ -45,7 +45,13 @@ const BlogSection = ({ blog }) => {
 
 				<div className="dq-blog-wrap">
 					<div className="dq-blog-grid">
-						{items.slice(0, 6).map((item) => (
+						{[...items]
+							.sort((a, b) => {
+								const dA = new Date(a.Created_date || a.createdAt || a.created_at || a.date || 0);
+								const dB = new Date(b.Created_date || b.createdAt || b.created_at || b.date || 0);
+								return dB - dA;
+							})
+							.slice(0, 6).map((item) => (
 							<div
 								className="dq-blog-card"
 								key={item.id || item._id || item.title}

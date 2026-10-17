@@ -41,7 +41,12 @@ const isItemValid = (item) => {
 	if (!item || typeof item !== 'object') return false;
 	if (!item.title && !item.name) return false;
 	if (item.type === 'App') return false;
-	if (item.isDeleted === true || item.is_deleted === 1 || item.is_deleted === true || item.deleted === true) return false;
+	if (
+		item.isDeleted === true || item.is_deleted === 1 || item.is_deleted === true || item.is_deleted === '1' || item.is_deleted === 'true' ||
+		item.is_delete === 1 || item.is_delete === true || item.is_delete === '1' || item.is_delete === 'true' ||
+		item.deleted === true || item.deleted === 1 || item.deleted === '1' ||
+		item.deleted_at || item.deletedAt
+	) return false;
 	if (item.status === 0 || item.status === false || item.status === 'inactive' || item.status === '0') return false;
 	if (item.isActive === false || item.is_active === 0 || item.is_active === false || item.is_active === '0') return false;
 	return true;
@@ -94,7 +99,7 @@ const PujaListSection = ({ puja }) => {
 	}, []);
 
 	const passedItems = extractPujaItems(puja);
-	const rawItems = passedItems.length > 0 ? passedItems : (apiPujas.length > 0 ? apiPujas : null);
+	const rawItems = apiPujas.length > 0 ? apiPujas : (passedItems.length > 0 ? passedItems : null);
 
 	if (!rawItems || rawItems.length === 0) {
 		return null;

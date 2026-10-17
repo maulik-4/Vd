@@ -153,8 +153,11 @@ const AudioCall = () => {
     console.log('[AudioCall] resolving session — reloaded:', reloaded, 'ctx.callInfo:', ctx.callInfo, 'st:', st);
 
     (async () => {
-      // 1. Existing context session
-      if (ctx.callInfo?.channelId) {
+      // 1. Existing context session — only resume if still genuinely active and matches this call.
+      // callStatus 'idle' or 'ended' means the call is over; ignore stale ctx.callInfo
+      // so a 2nd fresh call (with new st.channelId) isn't swallowed by the old one.
+      const incomingChannelId = st.channelId || st.gid;
+      if (ctx.callInfo?.channelId && ctx.callStatus !== 'idle' && ctx.callStatus !== 'ended' && (!incomingChannelId || incomingChannelId === ctx.callInfo.channelId)) {
         let resumeWallet = ctx.callInfo.wallet;
         if (!resumeWallet || parseFloat(resumeWallet) <= 0) {
           try {
@@ -182,15 +185,15 @@ const AudioCall = () => {
       }
 
       // 2. Fresh navigation from ChatCallingScreen (in-app navigation, NOT a hard reload)
-      if (!reloaded && (st.channelId || st.gid)) {
+      if (!reloaded && incomingChannelId) {
         let savedCall = null;
         try { savedCall = JSON.parse(sessionStorage.getItem('activeAudioCall') || 'null'); } catch (_) { }
-        const isSameChannel = savedCall && savedCall.channelId === (st.channelId || st.gid);
+        const isSameChannel = savedCall && savedCall.channelId === incomingChannelId;
         const calcElapsed = (isSameChannel && savedCall?.startedAt) ? Math.max(Math.floor((Date.now() - savedCall.startedAt) / 1000), 0) : 0;
 
         if (!cancelled) {
           const sObj = {
-            channelId: st.channelId || st.gid,
+            channelId: incomingChannelId,
             astrologerId: st.astrologer_id || id,
             astroName: st.astroName || st.name || 'Astrologer',
             astrologerImage: fixImgHost(st.astrologerImage || st.profile_img || ''),
@@ -206,12 +209,10 @@ const AudioCall = () => {
       }
 
       // 3. FAST refresh recovery — read this tab's saved session synchronously and
-      // rejoin immediately. Previously we awaited lastCallList() first, which put a
-      // network round trip (often 1–3s) in front of the Agora rejoin; in that gap the
-      // astrologer's client sees us as gone and their app ends the call.
+      // rejoin immediately on hard page refresh.
       let fastSaved = null;
       try { fastSaved = JSON.parse(sessionStorage.getItem('activeAudioCall') || 'null'); } catch (_) { }
-      if (fastSaved?.channelId && fastSaved.channelId !== id) {
+      if (reloaded && fastSaved?.channelId && fastSaved.channelId !== id) {
         if (!cancelled) {
           const calcElapsed = fastSaved.startedAt
             ? Math.max(Math.floor((Date.now() - fastSaved.startedAt) / 1000), 0)
@@ -420,7 +421,7 @@ const AudioCall = () => {
     ctx.setCallStatus('ended');
 
     const resolvedStatus = status || (ctx.callStatus === 'connected' ? 'end_user' : 'disconnect_user');
-    try { if (!remote) await callStatusUpdate(channelId, resolvedStatus); } catch { /* silent */ }
+    try { await callStatusUpdate(channelId, resolvedStatus); } catch { /* silent */ }
 
     await agoraManager.leave();
     setShowRating(true);
@@ -442,7 +443,10 @@ const AudioCall = () => {
   useEffect(() => {
     if (!channelId) return;
     const persist = () => {
-      if (endingRef.current) return;
+      if (endingRef.current || ctx.callStatus === 'ended' || ctx.callStatus === 'idle') {
+        try { sessionStorage.removeItem('activeAudioCall'); } catch (_) { }
+        return;
+      }
       try {
         let existing = {};
         try { existing = JSON.parse(sessionStorage.getItem('activeAudioCall') || '{}'); } catch (_) { }
@@ -471,7 +475,14 @@ const AudioCall = () => {
     return () => {
       window.removeEventListener('pagehide', persist);
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      persist();
+      if (!endingRef.current && ctx.callStatus === 'connected') {
+        persist();
+      } else {
+        try { sessionStorage.removeItem('activeAudioCall'); } catch (_) { }
+        if (endingRef.current) {
+          ctx.endCall();
+        }
+      }
     };
   }, [channelId, astrologer_id, name, pImg, price, wallet, ctx.callStatus]);
 
@@ -586,7 +597,7 @@ const AudioCall = () => {
       const cachedToken = session?.token || (() => {
         try {
           const s = JSON.parse(sessionStorage.getItem('activeAudioCall') || '{}');
-          return s.token || null;
+          return (s.channelId === channelId && s.token) ? s.token : null;
         } catch (_) { return null; }
       })();
 

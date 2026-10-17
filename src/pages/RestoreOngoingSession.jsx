@@ -11,7 +11,7 @@ import { lastCallList, fetchAgoraToken, getWalletBalance } from '../services/liv
 // Broadened to match the same "still active" values used elsewhere in this
 // codebase (ChatCallingScreen's ACCEPTED_VALUES), on top of the exact
 // "accept_astro" string your backend actually returns.
-const ACCEPTED_STATUSES = ['accept_astro', 'accepted', 'ongoing', 'active', 'accept', 'start', 'initiated', 'connected', 'busy'];
+const ACCEPTED_STATUSES = ['accept_astro', 'accepted', 'ongoing', 'active', 'accept', 'start', 'connected'];
 
 // FIX: previously used `data2.difference ? X : 300` — a truthy check, which
 // treats a perfectly valid 0 (call just started a second ago) the same as
@@ -121,7 +121,12 @@ const RestoreOngoingSession = () => {
         const isChat = callType.includes('chat');
         const isAccepted = ACCEPTED_STATUSES.includes(status) || status.includes('accept') || status.includes('ongoi') || status.includes('activ');
 
-        if (!channelId || !isAccepted) {
+        // Also skip any call that already has a terminal status — the backend
+        // may return the just-ended call for a few seconds before it clears.
+        const TERMINAL_STATUSES = ['end_user', 'end_astro', 'disconnect_user', 'reject_astro', 'rejected', 'ended', 'end'];
+        const isTerminal = TERMINAL_STATUSES.includes(status);
+
+        if (!channelId || !isAccepted || isTerminal) {
           console.log('[RestoreOngoingSession] no active session to restore, status:', status);
           return;
         }

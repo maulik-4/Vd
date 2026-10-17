@@ -199,6 +199,7 @@ const AstrologerDetail = () => {
   const [showModal, setShowModal] = useState(false);
   const [walletModal, setWalletModal] = useState(null); // null | 'chat' | 'call'
   const [walletBalance, setWalletBalance] = useState(0);
+  const [walletLoading, setWalletLoading] = useState(false);
   const [detailsModal, setDetailsModal] = useState(null); // null | 'chat' | 'call'
   const [popup, setPopup] = useState(null); // 'gallery'|'reviews'|'skills'
   const [showSideMenu, setShowSideMenu] = useState(false);
@@ -207,13 +208,25 @@ const AstrologerDetail = () => {
   const [showGift, setShowGift] = useState(false); // Send Gift modal
   const [showLoginModal, setShowLoginModal] = useState(false);
 
-  const handleChatCallClick = (type) => {
+  const handleChatCallClick = async (type) => {
     const token = storageService.getToken() || localStorage.getItem('token') || sessionStorage.getItem('token');
     if (!token) {
       setShowLoginModal(true);
       return;
     }
+    // Open modal immediately with cached balance, then fetch fresh balance in background
     setWalletModal(type);
+    setWalletLoading(true);
+    try {
+      const w = await apiService.getBearer('/user_api/get_profile');
+      const bal = Number(
+        w?.results?.wallet ?? w?.results_web?.wallet ??
+        w?.results?.wallet_amount ?? w?.results_web?.wallet_amount ??
+        w?.wallet ?? walletBalance
+      );
+      setWalletBalance(Number.isNaN(bal) ? walletBalance : bal);
+    } catch (_) { /* keep existing balance */ }
+    finally { setWalletLoading(false); }
   };
   const [giftList, setGiftList] = useState(STATIC_GIFTS); // sidebar gifts (API-backed)
   const [giftImgErr, setGiftImgErr] = useState({}); // { [giftId]: true }
@@ -1129,6 +1142,7 @@ const AstrologerDetail = () => {
         onClose={() => setWalletModal(null)}
         astrologer={astro}
         walletBalance={walletBalance}
+        walletLoading={walletLoading}
         mode={walletModal || 'chat'}
         onConnect={(mode) => {
           // Step 2 → after wallet check, collect user details

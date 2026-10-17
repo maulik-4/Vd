@@ -128,3 +128,9 @@
   .wc-name { font-size: 1rem; }
   .wc-wallet-amt { font-size: 1.25rem; }
 }
+
+/* ── BALANCE REFRESH SPINNER ── */
+@keyframes wc-spin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

@@ -268,10 +268,10 @@ const ChatCallingScreen = () => {
           return; // never reaches startPolling/startFirebaseFallback
         }
 
-        // Server returns its own channel_id — THIS is what callInitiateStatus
-        // and callStatusUpdate actually expect, not the fb_channel_id we sent.
-        serverChannelId = res?.channel_id;
-        channelIdRef.current = serverChannelId;
+        if (res?.channel_id) {
+          serverChannelId = res.channel_id;
+          channelIdRef.current = serverChannelId;
+        }
         agoraTokenRef.current = res?.fb_channel_id || ''; 
       } catch (err) {
         // Even if initiate errors, we still poll — backend may have created it.
